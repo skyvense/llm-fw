@@ -1,0 +1,174 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>LLM Framework Dashboard</title>
+    <link href="https://cdn.jsdelivr.net/npm/tailwindcss@2.2.19/dist/tailwind.min.css" rel="stylesheet">
+</head>
+<body class="bg-gray-100">
+    <div class="container mx-auto px-4 py-8">
+        <h1 class="text-3xl font-bold mb-8">LLM Framework Dashboard</h1>
+        
+        <!-- Model List -->
+        <div class="bg-white rounded-lg shadow p-6 mb-8">
+            <h2 class="text-xl font-semibold mb-4">Available Models</h2>
+            <div id="modelList" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                <!-- Model list will be loaded dynamically via JavaScript -->
+            </div>
+        </div>
+
+        <!-- Text Generation -->
+        <div class="bg-white rounded-lg shadow p-6 mb-8">
+            <h2 class="text-xl font-semibold mb-4">Generate Text</h2>
+            <form id="generateForm" class="space-y-4">
+                <div>
+                    <label class="block text-sm font-medium text-gray-700">Select Model</label>
+                    <select id="modelSelect" name="model" class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500">
+                        <!-- Model options will be loaded dynamically via JavaScript -->
+                    </select>
+                </div>
+                <div>
+                    <label class="block text-sm font-medium text-gray-700">Prompt</label>
+                    <textarea id="prompt" name="prompt" rows="4" class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500"></textarea>
+                </div>
+                <button type="submit" class="inline-flex justify-center py-2 px-4 border border-transparent shadow-sm text-sm font-medium rounded-md text-white bg-indigo-600 hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500">
+                    Generate
+                </button>
+            </form>
+            <div id="response" class="mt-4 p-4 bg-gray-50 rounded-md hidden">
+                <pre class="whitespace-pre-wrap"></pre>
+            </div>
+        </div>
+
+        <!-- Model Statistics -->
+        <div class="bg-white rounded-lg shadow p-6">
+            <h2 class="text-xl font-semibold mb-4">Model Statistics</h2>
+            <div id="modelStats" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                <!-- Statistics will be loaded dynamically via JavaScript -->
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // Fetch model list
+        async function fetchModels() {
+            try {
+                const response = await fetch('/api/models');
+                if (!response.ok) {
+                    const errorData = await response.json();
+                    throw new Error(errorData.error || 'Failed to fetch models');
+                }
+                
+                const data = await response.json();
+                const modelList = document.getElementById('modelList');
+                const modelSelect = document.getElementById('modelSelect');
+                
+                modelList.innerHTML = '';
+                modelSelect.innerHTML = '<option value="">Select a model</option>';
+                
+                if (!data.models || data.models.length === 0) {
+                    modelList.innerHTML = '<div class="p-4 border rounded-lg bg-yellow-50 text-yellow-700">No models available</div>';
+                    return;
+                }
+                
+                data.models.forEach(model => {
+                    // Add to model list
+                    const div = document.createElement('div');
+                    div.className = 'p-4 border rounded-lg';
+                    div.innerHTML = `
+                        <h3 class="font-medium">${model}</h3>
+                        <div class="mt-2 text-sm text-gray-500">
+                            <button onclick="fetchModelStats('${model}')" class="text-indigo-600 hover:text-indigo-900">
+                                View Stats
+                            </button>
+                        </div>
+                    `;
+                    modelList.appendChild(div);
+
+                    // Add to model selector
+                    const option = document.createElement('option');
+                    option.value = model;
+                    option.textContent = model;
+                    modelSelect.appendChild(option);
+                });
+            } catch (error) {
+                console.error('Failed to fetch model list:', error);
+                const modelList = document.getElementById('modelList');
+                modelList.innerHTML = `
+                    <div class="p-4 border rounded-lg bg-red-50 text-red-700">
+                        Error: ${error.message}
+                    </div>
+                `;
+            }
+        }
+
+        // Fetch model statistics
+        async function fetchModelStats(model) {
+            try {
+                const response = await fetch(`/api/models/${model}/stats`);
+                const data = await response.json();
+                const statsDiv = document.getElementById('modelStats');
+                
+                const div = document.createElement('div');
+                div.className = 'p-4 border rounded-lg';
+                div.innerHTML = `
+                    <h3 class="font-medium">${model}</h3>
+                    <div class="mt-2 text-sm text-gray-500">
+                        <p>Total Requests: ${data.total_requests}</p>
+                        <p>Total Tokens: ${data.total_tokens}</p>
+                        <p>Average Latency: ${data.average_latency.toFixed(2)}ms</p>
+                        <p>Success Rate: ${data.success_rate.toFixed(2)}%</p>
+                    </div>
+                `;
+                
+                // Replace or add statistics
+                const existingStats = statsDiv.querySelector(`[data-model="${model}"]`);
+                if (existingStats) {
+                    existingStats.replaceWith(div);
+                } else {
+                    statsDiv.appendChild(div);
+                }
+            } catch (error) {
+                console.error('Failed to fetch model statistics:', error);
+            }
+        }
+
+        // Handle generate form submission
+        document.getElementById('generateForm').addEventListener('submit', async (e) => {
+            e.preventDefault();
+            const model = document.getElementById('modelSelect').value;
+            const prompt = document.getElementById('prompt').value;
+            
+            if (!model || !prompt) {
+                alert('Please select a model and enter a prompt');
+                return;
+            }
+
+            try {
+                const response = await fetch('/api/generate', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify({ model, prompt }),
+                });
+                
+                const data = await response.json();
+                const responseDiv = document.getElementById('response');
+                responseDiv.querySelector('pre').textContent = data.response;
+                responseDiv.classList.remove('hidden');
+                
+                // Update model statistics
+                fetchModelStats(model);
+            } catch (error) {
+                console.error('Failed to generate text:', error);
+                alert('Failed to generate text. Please try again.');
+            }
+        });
+
+        // Fetch model list on page load
+        document.addEventListener('DOMContentLoaded', fetchModels);
+    </script>
+</body>
+</html> 
