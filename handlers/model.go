@@ -130,7 +130,18 @@ func (h *ModelHandler) ListModels(c *gin.Context) {
 // GetModelStats handles requests to get model statistics
 func (h *ModelHandler) GetModelStats(c *gin.Context) {
 	model := c.Param("model")
+	log.Printf("Getting stats for model: %s", model)
+
 	metrics := h.MetricsCollector.GetMetrics()
+	if metrics == nil {
+		log.Printf("No metrics data available")
+		c.JSON(http.StatusInternalServerError, gin.H{
+			"error": "metrics data not available",
+		})
+		return
+	}
+
+	log.Printf("Available model stats: %+v", metrics.ModelStats)
 
 	modelStats := struct {
 		TotalRequests  int64   `json:"total_requests"`
@@ -140,6 +151,7 @@ func (h *ModelHandler) GetModelStats(c *gin.Context) {
 	}{}
 
 	if stats, exists := metrics.ModelStats[model]; exists {
+		log.Printf("Found stats for model %s: %+v", model, stats)
 		modelStats.TotalRequests = stats.TotalRequests
 		modelStats.TotalTokens = stats.TotalTokensIn + stats.TotalTokensOut
 		if stats.TotalRequests > 0 {
@@ -148,6 +160,8 @@ func (h *ModelHandler) GetModelStats(c *gin.Context) {
 		}
 		c.JSON(http.StatusOK, modelStats)
 	} else {
-		c.JSON(http.StatusNotFound, gin.H{"error": "model statistics not found"})
+		log.Printf("No stats found for model: %s", model)
+		// 初始化一个空的统计信息而不是返回错误
+		c.JSON(http.StatusOK, modelStats)
 	}
 }

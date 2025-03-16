@@ -117,13 +117,21 @@
                 const div = document.createElement('div');
                 div.className = 'p-4 border rounded-lg';
                 div.setAttribute('data-model', model);
+
+                // 检查是否有任何请求
+                const hasStats = data.total_requests > 0;
+                
                 div.innerHTML = `
                     <h3 class="font-medium">${model}</h3>
-                    <div class="mt-2 text-sm text-gray-500">
-                        <p>Total Requests: ${data.total_requests}</p>
-                        <p>Total Tokens: ${data.total_tokens}</p>
-                        <p>Average Latency: ${data.average_latency.toFixed(2)}ms</p>
-                        <p>Success Rate: ${data.success_rate.toFixed(2)}%</p>
+                    <div class="mt-2 text-sm ${hasStats ? 'text-gray-500' : 'text-gray-400 italic'}">
+                        ${hasStats ? `
+                            <p>Total Requests: ${data.total_requests}</p>
+                            <p>Total Tokens: ${data.total_tokens}</p>
+                            <p>Average Latency: ${data.average_latency.toFixed(2)}ms</p>
+                            <p>Success Rate: ${data.success_rate.toFixed(2)}%</p>
+                        ` : `
+                            <p>No statistics available yet</p>
+                        `}
                     </div>
                 `;
                 
@@ -136,7 +144,6 @@
                 }
             } catch (error) {
                 console.error('Failed to fetch model statistics:', error);
-                // 显示错误信息
                 const statsDiv = document.getElementById('modelStats');
                 const errorDiv = document.createElement('div');
                 errorDiv.className = 'p-4 border rounded-lg bg-red-50 text-red-700';
@@ -144,7 +151,7 @@
                 errorDiv.innerHTML = `
                     <h3 class="font-medium">${model}</h3>
                     <div class="mt-2">
-                        Failed to load statistics
+                        Error loading statistics
                     </div>
                 `;
                 
