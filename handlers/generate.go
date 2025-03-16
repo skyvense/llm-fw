@@ -3,7 +3,9 @@ package handlers
 import (
 	"bytes"
 	"encoding/json"
+	"io"
 	"net/http"
+	"strings"
 	"time"
 
 	"github.com/gin-gonic/gin"
@@ -47,21 +49,24 @@ func (h *GenerateHandler) Generate(c *gin.Context) {
 
 	startTime := time.Now()
 
-	client := &http.Client{}
+	client := &http.Client{
+		Timeout: 300 * time.Second,
+	}
 
 	requestBody := map[string]interface{}{
 		"model":  req.Model,
 		"prompt": req.Prompt,
+		"stream": true, // 启用流式响应
 	}
 	jsonBody, err := json.Marshal(requestBody)
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "构建请求失败"})
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to build request"})
 		return
 	}
 
 	proxyReq, err := http.NewRequest("POST", h.TargetURL+"/api/generate", bytes.NewBuffer(jsonBody))
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "创建请求失败"})
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to create request"})
 		return
 	}
 	proxyReq.Header.Set("Content-Type", "application/json")
@@ -81,13 +86,43 @@ func (h *GenerateHandler) Generate(c *gin.Context) {
 	}
 	defer proxyResp.Body.Close()
 
-	var ollamaResp struct {
-		Response string `json:"response"`
-	}
-	if err := json.NewDecoder(proxyResp.Body).Decode(&ollamaResp); err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "解析响应失败"})
+	if proxyResp.StatusCode != http.StatusOK {
+		c.JSON(proxyResp.StatusCode, gin.H{"error": "model server returned error"})
 		return
 	}
+
+	// 读取流式响应
+	decoder := json.NewDecoder(proxyResp.Body)
+	var fullResponse strings.Builder
+	var lastError error
+
+	for {
+		var streamResp struct {
+			Response string `json:"response"`
+			Done     bool   `json:"done"`
+		}
+
+		if err := decoder.Decode(&streamResp); err != nil {
+			if err == io.EOF {
+				break
+			}
+			lastError = err
+			break
+		}
+
+		fullResponse.WriteString(streamResp.Response)
+
+		if streamResp.Done {
+			break
+		}
+	}
+
+	if lastError != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to parse response"})
+		return
+	}
+
+	response := fullResponse.String()
 
 	latency := time.Since(startTime).Milliseconds()
 
@@ -96,14 +131,14 @@ func (h *GenerateHandler) Generate(c *gin.Context) {
 		UserID:    req.UserID,
 		Model:     req.Model,
 		Prompt:    req.Prompt,
-		Response:  ollamaResp.Response,
+		Response:  response,
 		TokensIn:  len(req.Prompt),
-		TokensOut: len(ollamaResp.Response),
+		TokensOut: len(response),
 		Server:    "proxy",
 	}
 
 	if err := h.Storage.SaveRequest(storageReq); err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "保存请求记录失败"})
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to save request record"})
 		return
 	}
 
@@ -111,13 +146,13 @@ func (h *GenerateHandler) Generate(c *gin.Context) {
 		req.Model,
 		"proxy",
 		int64(len(req.Prompt)),
-		int64(len(ollamaResp.Response)),
+		int64(len(response)),
 		latency,
 		true,
 	)
 
 	c.JSON(http.StatusOK, gin.H{
-		"response": ollamaResp.Response,
+		"response": response,
 		"user_id":  req.UserID,
 	})
 }
