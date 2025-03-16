@@ -179,4 +179,14 @@ llm-fw/
 
 ### 许可证
 
-MIT License 
+MIT License
+
+### 开发过程截图
+
+Development Screenshots / 开发过程截图
+
+![Screenshot 1](img/1f0299d6d793b5b743ea318ac55db2f.png)
+
+![Screenshot 2](img/4135957504a3c3f096bc7a41596da37.png)
+
+![Screenshot 3](img/19671528f9a5af38ba8f1a73011f7cb.png) 
