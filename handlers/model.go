@@ -7,7 +7,10 @@ import (
 	"log"
 	"net/http"
 	"sort"
+	"strings"
 	"time"
+
+	"llm-fw/metrics"
 
 	"github.com/gin-gonic/gin"
 )
@@ -129,39 +132,56 @@ func (h *ModelHandler) ListModels(c *gin.Context) {
 
 // GetModelStats handles requests to get model statistics
 func (h *ModelHandler) GetModelStats(c *gin.Context) {
-	model := c.Param("model")
+	model := strings.TrimSpace(c.Param("model"))
 	log.Printf("Getting stats for model: %s", model)
 
 	metrics := h.MetricsCollector.GetMetrics()
 	if metrics == nil {
 		log.Printf("No metrics data available")
-		c.JSON(http.StatusInternalServerError, gin.H{
-			"error": "metrics data not available",
+		c.JSON(http.StatusOK, gin.H{
+			"total_requests":  0,
+			"total_tokens":    0,
+			"average_latency": 0,
+			"success_rate":    0,
 		})
 		return
 	}
 
-	log.Printf("Available model stats: %+v", metrics.ModelStats)
-
-	modelStats := struct {
-		TotalRequests  int64   `json:"total_requests"`
-		TotalTokens    int64   `json:"total_tokens"`
-		AverageLatency float64 `json:"average_latency"`
-		SuccessRate    float64 `json:"success_rate"`
-	}{}
+	modelNames := getModelNames(metrics.ModelStats)
+	log.Printf("Available models in stats: %v", modelNames)
+	log.Printf("Looking for exact match of model: %s", model)
 
 	if stats, exists := metrics.ModelStats[model]; exists {
 		log.Printf("Found stats for model %s: %+v", model, stats)
-		modelStats.TotalRequests = stats.TotalRequests
-		modelStats.TotalTokens = stats.TotalTokensIn + stats.TotalTokensOut
+		totalTokens := stats.TotalTokensIn + stats.TotalTokensOut
+		successRate := 0.0
 		if stats.TotalRequests > 0 {
-			modelStats.AverageLatency = float64(stats.TotalLatency) / float64(stats.TotalRequests)
-			modelStats.SuccessRate = float64(stats.TotalRequests-stats.FailedRequests) / float64(stats.TotalRequests) * 100
+			successRate = float64(stats.TotalRequests-stats.FailedRequests) / float64(stats.TotalRequests) * 100
 		}
-		c.JSON(http.StatusOK, modelStats)
+
+		c.JSON(http.StatusOK, gin.H{
+			"total_requests":  stats.TotalRequests,
+			"total_tokens":    totalTokens,
+			"average_latency": stats.AverageLatency,
+			"success_rate":    successRate,
+		})
 	} else {
-		log.Printf("No stats found for model: %s", model)
-		// 初始化一个空的统计信息而不是返回错误
-		c.JSON(http.StatusOK, modelStats)
+		log.Printf("No stats found for model: %s (available models: %v)", model, modelNames)
+		c.JSON(http.StatusOK, gin.H{
+			"total_requests":  0,
+			"total_tokens":    0,
+			"average_latency": 0,
+			"success_rate":    0,
+		})
 	}
+}
+
+// getModelNames 返回所有可用模型的名称列表
+func getModelNames(stats map[string]*metrics.ModelMetrics) []string {
+	var names []string
+	for name := range stats {
+		names = append(names, name)
+	}
+	sort.Strings(names)
+	return names
 }

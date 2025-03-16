@@ -33,12 +33,14 @@ func SetupRouter(
 	// Create handlers
 	modelHandler := handlers.NewModelHandler(targetURL, metricsCollector)
 	generateHandler := handlers.NewGenerateHandler(targetURL, storage, metricsCollector)
+	chatHandler := handlers.NewChatHandler(targetURL, storage, metricsCollector)
 
 	// API routes
 	api := r.Group("/api")
 	{
 		// Direct proxy to Ollama for model operations
 		api.POST("/generate", generateHandler.Generate)
+		api.POST("/chat", chatHandler.Chat)
 		api.GET("/models", modelHandler.ListModels)
 		api.GET("/models/:model/stats", modelHandler.GetModelStats)
 	}
