@@ -209,6 +209,7 @@ func (h *ChatHandler) Chat(c *gin.Context) {
 					TokensIn:  stats.TokensIn,
 					TokensOut: stats.TokensOut,
 					Server:    "ollama",
+					LatencyMs: float64(latency),
 					Timestamp: time.Now(),
 					Source:    "external_ui", // 标记请求来源
 				}

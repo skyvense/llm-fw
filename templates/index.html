@@ -403,9 +403,13 @@
                                     model: model,
                                     prompt: prompt,
                                     response: fullResponse,
-                                    stats: data.stats,
+                                    tokens_in: data.stats.prompt_eval_count || 0,
+                                    tokens_out: data.stats.eval_count || 0,
+                                    latency_ms: data.stats.eval_duration ? data.stats.eval_duration * 1000 : 0,
                                     timestamp: new Date()
                                 });
+                                // 更新模型统计
+                                fetchModels();
                             }
                         } catch (e) {
                             console.warn('Failed to parse chunk:', e);

@@ -15,6 +15,7 @@ type Request struct {
 	TokensIn  int       `json:"tokens_in"`
 	TokensOut int       `json:"tokens_out"`
 	Server    string    `json:"server"`
+	LatencyMs float64   `json:"latency_ms"`
 	Timestamp time.Time `json:"timestamp"`
 }
 

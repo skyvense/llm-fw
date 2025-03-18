@@ -17,16 +17,39 @@ import (
 
 // GenerateRequest 定义了生成请求的结构
 type GenerateRequest struct {
-	Model  string `json:"model" binding:"required"`
-	Prompt string `json:"prompt" binding:"required"`
-	UserID string `json:"user_id"`
-	Stream bool   `json:"stream"`
+	Model       string   `json:"model" binding:"required"`
+	Prompt      string   `json:"prompt" binding:"required"`
+	MaxTokens   int      `json:"max_tokens,omitempty"`
+	Temperature float64  `json:"temperature,omitempty"`
+	TopP        float64  `json:"top_p,omitempty"`
+	N           int      `json:"n,omitempty"`
+	Stream      bool     `json:"stream,omitempty"`
+	Stop        []string `json:"stop,omitempty"`
 }
 
-// GenerateResponse 定义生成响应的结构
+// GenerateResponse 定义了生成响应的结构
 type GenerateResponse struct {
-	Response string           `json:"response"`
-	Stats    api.RequestStats `json:"stats"`
+	ID      string   `json:"id"`
+	Object  string   `json:"object"`
+	Created int64    `json:"created"`
+	Model   string   `json:"model"`
+	Choices []Choice `json:"choices"`
+	Usage   Usage    `json:"usage"`
+}
+
+// Choice 定义了选择的结构
+type Choice struct {
+	Text         string      `json:"text"`
+	Index        int         `json:"index"`
+	LogProbs     interface{} `json:"logprobs"`
+	FinishReason string      `json:"finish_reason"`
+}
+
+// Usage 定义了使用统计的结构
+type Usage struct {
+	PromptTokens     int `json:"prompt_tokens"`
+	CompletionTokens int `json:"completion_tokens"`
+	TotalTokens      int `json:"total_tokens"`
 }
 
 // GenerateHandler 处理生成相关的请求
@@ -58,8 +81,18 @@ func (h *GenerateHandler) Generate(c *gin.Context) {
 		return
 	}
 
-	if req.UserID == "" {
-		req.UserID = "anonymous_" + uuid.New().String()[:8]
+	// 设置默认值
+	if req.N == 0 {
+		req.N = 1
+	}
+	if req.MaxTokens == 0 {
+		req.MaxTokens = 2048
+	}
+	if req.Temperature == 0 {
+		req.Temperature = 0.7
+	}
+	if req.TopP == 0 {
+		req.TopP = 1
 	}
 
 	startTime := time.Now()
@@ -68,6 +101,13 @@ func (h *GenerateHandler) Generate(c *gin.Context) {
 	ollamaReq := map[string]interface{}{
 		"model":  req.Model,
 		"prompt": req.Prompt,
+		"stream": req.Stream,
+		"options": map[string]interface{}{
+			"num_predict": req.MaxTokens,
+			"temperature": req.Temperature,
+			"top_p":       req.TopP,
+			"stop":        req.Stop,
+		},
 	}
 
 	ollamaReqBody, err := json.Marshal(ollamaReq)
@@ -84,6 +124,15 @@ func (h *GenerateHandler) Generate(c *gin.Context) {
 	}
 	defer resp.Body.Close()
 
+	// 创建响应
+	response := GenerateResponse{
+		ID:      uuid.New().String(),
+		Object:  "text_completion",
+		Created: time.Now().Unix(),
+		Model:   req.Model,
+		Choices: make([]Choice, req.N),
+	}
+
 	// 读取流式响应
 	decoder := json.NewDecoder(resp.Body)
 	var fullResponse string
@@ -98,8 +147,25 @@ func (h *GenerateHandler) Generate(c *gin.Context) {
 		}
 
 		// 从响应中提取文本
-		if response, ok := chunk["response"].(string); ok {
-			fullResponse += response
+		if responseText, ok := chunk["response"].(string); ok {
+			fullResponse += responseText
+			if req.Stream {
+				// 发送流式响应
+				response.Choices[0] = Choice{
+					Text:         responseText,
+					Index:        0,
+					LogProbs:     nil,
+					FinishReason: "length",
+				}
+				response.Usage = Usage{
+					PromptTokens:     int(promptEvalCount),
+					CompletionTokens: int(evalCount),
+					TotalTokens:      int(promptEvalCount + evalCount),
+				}
+				jsonData, _ := json.Marshal(response)
+				c.Writer.Write([]byte("data: " + string(jsonData) + "\n\n"))
+				c.Writer.Flush()
+			}
 		}
 
 		// 更新token计数
@@ -113,44 +179,48 @@ func (h *GenerateHandler) Generate(c *gin.Context) {
 
 	latency := time.Since(startTime).Milliseconds()
 
-	// 创建统计信息
-	stats := api.RequestStats{
-		TokensIn:  int(promptEvalCount),
-		TokensOut: int(evalCount),
-		LatencyMs: float64(latency),
-	}
-
 	// 更新指标
 	h.MetricsCollector.RecordRequest(
 		req.Model,
 		"ollama",
-		int64(stats.TokensIn),
-		int64(stats.TokensOut),
+		int64(promptEvalCount),
+		int64(evalCount),
 		latency,
 		true,
 	)
 
 	// 保存到存储
 	storageReq := &api.Request{
-		ID:        uuid.New().String(),
-		UserID:    req.UserID,
+		ID:        response.ID,
+		UserID:    "system",
 		Model:     req.Model,
 		Prompt:    req.Prompt,
 		Response:  fullResponse,
-		TokensIn:  stats.TokensIn,
-		TokensOut: stats.TokensOut,
+		TokensIn:  int(promptEvalCount),
+		TokensOut: int(evalCount),
 		Server:    "ollama",
+		LatencyMs: float64(latency),
 		Timestamp: time.Now(),
+		Source:    "api",
 	}
 
 	if err := h.Storage.SaveRequest(storageReq); err != nil {
 		log.Printf("Failed to save generate request: %v", err)
 	}
 
-	// 返回响应
-	c.Header("Content-Type", "application/json")
-	c.JSON(http.StatusOK, GenerateResponse{
-		Response: fullResponse,
-		Stats:    stats,
-	})
+	// 如果不是流式响应，发送完整响应
+	if !req.Stream {
+		response.Choices[0] = Choice{
+			Text:         fullResponse,
+			Index:        0,
+			LogProbs:     nil,
+			FinishReason: "length",
+		}
+		response.Usage = Usage{
+			PromptTokens:     int(promptEvalCount),
+			CompletionTokens: int(evalCount),
+			TotalTokens:      int(promptEvalCount + evalCount),
+		}
+		c.JSON(http.StatusOK, response)
+	}
 }
