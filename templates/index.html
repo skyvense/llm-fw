@@ -351,16 +351,24 @@
             const responseDiv = document.getElementById('response');
             const responsePre = responseDiv.querySelector('pre');
             responseDiv.classList.remove('hidden');
-            responsePre.textContent = i18n[lang]["generating"];
-            responsePre.className = 'whitespace-pre-wrap text-gray-500 italic';
+            responsePre.textContent = '';
+            responsePre.className = 'whitespace-pre-wrap';
 
             try {
-                const response = await fetch('/api/generate', {
+                const response = await fetch('/api/chat', {
                     method: 'POST',
                     headers: {
                         'Content-Type': 'application/json',
                     },
-                    body: JSON.stringify({ model, prompt }),
+                    body: JSON.stringify({
+                        model: model,
+                        options: {},
+                        messages: [{
+                            role: "user",
+                            content: prompt,
+                            images: []
+                        }]
+                    }),
                 });
                 
                 if (!response.ok) {
@@ -368,17 +376,42 @@
                     throw new Error(errorData.error || 'Generation failed');
                 }
 
-                const data = await response.json();
-                responsePre.textContent = data.response;
-                responsePre.className = 'whitespace-pre-wrap';
+                const reader = response.body.getReader();
+                const decoder = new TextDecoder();
+                let fullResponse = '';
 
-                addRequestToHistory({
-                    model: model,
-                    prompt: prompt,
-                    response: data.response,
-                    stats: data.stats,
-                    timestamp: new Date()
-                });
+                while (true) {
+                    const { value, done } = await reader.read();
+                    if (done) break;
+                    
+                    const chunk = decoder.decode(value, { stream: true });
+                    const lines = chunk.split('\n').filter(line => line.trim());
+                    
+                    for (const line of lines) {
+                        try {
+                            const data = JSON.parse(line);
+                            if (data.message && data.message.content) {
+                                // 只在非完成状态下添加内容
+                                if (!data.done) {
+                                    fullResponse += data.message.content;
+                                    responsePre.textContent = fullResponse;
+                                }
+                            }
+                            // 如果收到最后一个消息，更新历史记录
+                            if (data.done) {
+                                addRequestToHistory({
+                                    model: model,
+                                    prompt: prompt,
+                                    response: fullResponse,
+                                    stats: data.stats,
+                                    timestamp: new Date()
+                                });
+                            }
+                        } catch (e) {
+                            console.warn('Failed to parse chunk:', e);
+                        }
+                    }
+                }
 
             } catch (error) {
                 console.error('Generation failed:', error);
