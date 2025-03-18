@@ -1,192 +1,129 @@
-# LLM Forwarder Framework
+# LLM Framework
 
-*[中文](#chinese) | [English](#english)*
+A lightweight framework for building LLM applications with Ollama integration.
 
-*Note: All code in this project is AI-generated using Claude 3.5 Sonnet*  
-*注意：本项目所有代码均由 Claude 3.5 Sonnet 人工智能生成*
+一个轻量级的 LLM 应用框架，集成了 Ollama.
 
-<a name="english"></a>
-## English
+## Features 特性
 
-A framework for forwarding, managing and monitoring Large Language Model (LLM) services. It provides a unified interface for handling model requests, collecting metrics, and exposing API endpoints to access these functionalities.
+- 🚀 Easy integration with Ollama
+- 📊 Real-time metrics monitoring
+- 💾 Request history storage
+- 🌐 Web UI interface
+- 🔄 Streaming response support
+- 📝 Configurable through YAML
 
-### Features
+- 🚀 轻松集成 Ollama
+- 📊 实时指标监控
+- 💾 请求历史存储
+- 🌐 Web 界面
+- 🔄 流式响应支持
+- 📝 通过 YAML 配置
 
-- Model request handling and forwarding
-- Request history and storage
-- Performance metrics collection
-- Server health monitoring
-- RESTful API endpoints
-- Real-time streaming response
-- Detailed request statistics
-- Web interface monitoring
+## Prerequisites 前置条件
 
-### Configuration
+- Go 1.20 or later
+- Ollama installed and running
+- Git
 
-Example `config.yaml` file:
+## Installation 安装
+
+1. Clone the repository 克隆仓库:
+```bash
+git clone https://github.com/yourusername/llm-fw.git
+cd llm-fw
+```
+
+2. Install dependencies 安装依赖:
+```bash
+go mod download
+```
+
+3. Configure the application 配置应用:
+Create a `config.yaml` file in the root directory 在根目录创建 `config.yaml` 文件:
+```yaml
+server:
+  host: "localhost"
+  port: 8080
+
+ollama:
+  url: "http://localhost:11434"
+
+storage:
+  type: "file"
+  path: "data"
+```
+
+## Usage 使用方法
+
+1. Start the server 启动服务器:
+```bash
+go run main.go
+```
+
+2. Open your browser and navigate to 打开浏览器访问:
+```
+http://localhost:8080
+```
+
+## Configuration 配置说明
+
+The application can be configured through `config.yaml` in the root directory:
+
+应用可以通过根目录下的 `config.yaml` 进行配置：
 
 ```yaml
 server:
-  host: "0.0.0.0"  # Server listen address
-  port: 8080       # Server listen port
+  host: "localhost"    # Server host 服务器主机
+  port: 8080          # Server port 服务器端口
 
 ollama:
-  url: "http://localhost:11434"  # Ollama service address
+  url: "http://localhost:11434"  # Ollama server URL Ollama 服务器地址
 
 storage:
-  type: "file"     # Storage type (currently supports file storage)
-  path: "./data"   # Storage path
+  type: "file"        # Storage type (file/memory) 存储类型（文件/内存）
+  path: "data"        # Storage path for file storage 文件存储路径
 ```
 
-### Project Structure
+## API Endpoints API 接口
+
+- `GET /api/models` - List available models 列出可用模型
+- `POST /api/generate` - Generate text 生成文本
+- `GET /api/history` - Get request history 获取请求历史
+- `GET /api/metrics` - Get metrics 获取指标
+
+## Development 开发
+
+### Project Structure 项目结构
 
 ```
 llm-fw/
-├── config/       # Configuration related code
-├── handlers/     # Request handlers
-├── metrics/      # Metrics collector
-├── proxy/        # Proxy related code
-├── routes/       # Route definitions
-├── storage/      # Storage implementation
-├── templates/    # Web interface templates
-├── config.yaml   # Configuration file
-└── main.go      # Main program entry
+├── api/          # API types and interfaces API 类型和接口
+├── config/       # Configuration handling 配置处理
+├── handlers/     # Request handlers 请求处理器
+├── metrics/      # Metrics collection 指标收集
+├── routes/       # Route setup 路由设置
+├── storage/      # Storage implementations 存储实现
+├── templates/    # HTML templates HTML 模板
+├── config.yaml   # Application configuration 应用配置
+└── main.go       # Application entry point 应用入口
 ```
 
-### Installation and Running
+### Adding New Features 添加新功能
 
-1. Ensure Go 1.16 or higher is installed
-2. Clone the project and enter the project directory
-3. Install dependencies:
-   ```bash
-   go mod download
-   ```
-4. Run the server:
-   ```bash
-   go run main.go
-   ```
+1. Create new types in `api` package 在 `api` 包中创建新类型
+2. Implement handlers in `handlers` package 在 `handlers` 包中实现处理器
+3. Add routes in `routes` package 在 `routes` 包中添加路由
+4. Update templates if needed 如果需要，更新模板
 
-### API Endpoints
+## Contributing 贡献
 
-- `GET /` - Web monitoring interface
-- `GET /api/models` - Get list of available models
-- `POST /api/generate` - Generate text
-- `POST /api/chat` - Chat interface
-- `GET /api/models/:model/stats` - Get model statistics
-- `GET /api/health` - Health check endpoint
+Contributions are welcome! Please feel free to submit a Pull Request.
 
-### Web Interface Features
+欢迎贡献！请随时提交 Pull Request。
 
-- Model list display
-- Real-time text generation
-- Request history
-- Model statistics
-- Copy response text
-- Streaming response display
+## License 许可证
 
-### Contributing
+This project is licensed under the MIT License - see the LICENSE file for details.
 
-Issues and Pull Requests are welcome!
-
-### License
-
-MIT License
-
----
-
-<a name="chinese"></a>
-## 中文
-
-一个用于转发、管理和监控大型语言模型（LLM）服务的框架。它提供了统一的接口来处理模型请求、收集指标，并提供 API 端点来访问这些功能。
-
-### 特点
-
-- 模型请求处理和转发
-- 请求历史记录和存储
-- 性能指标收集
-- 服务器健康监控
-- RESTful API 端点
-- 实时流式响应支持
-- 详细的请求统计
-- Web 界面监控
-
-### 配置
-
-示例 `config.yaml` 文件：
-
-```yaml
-server:
-  host: "0.0.0.0"  # 服务器监听地址
-  port: 8080       # 服务器监听端口
-
-ollama:
-  url: "http://localhost:11434"  # Ollama 服务地址
-
-storage:
-  type: "file"     # 存储类型（当前支持文件存储）
-  path: "./data"   # 存储路径
-```
-
-### 项目结构
-
-```
-llm-fw/
-├── config/       # 配置相关代码
-├── handlers/     # 请求处理器
-├── metrics/      # 指标收集器
-├── proxy/        # 代理相关代码
-├── routes/       # 路由定义
-├── storage/      # 存储实现
-├── templates/    # Web 界面模板
-├── config.yaml   # 配置文件
-└── main.go      # 主程序入口
-```
-
-### 安装和运行
-
-1. 确保已安装 Go 1.16 或更高版本
-2. 克隆项目并进入项目目录
-3. 安装依赖：
-   ```bash
-   go mod download
-   ```
-4. 运行服务器：
-   ```bash
-   go run main.go
-   ```
-
-### API 端点
-
-- `GET /` - Web 监控界面
-- `GET /api/models` - 获取可用模型列表
-- `POST /api/generate` - 生成文本
-- `POST /api/chat` - 聊天接口
-- `GET /api/models/:model/stats` - 获取模型统计信息
-- `GET /api/health` - 健康检查端点
-
-### Web 界面功能
-
-- 模型列表显示
-- 实时文本生成
-- 请求历史记录
-- 模型统计信息
-- 复制响应文本
-- 流式响应显示
-
-### 贡献
-
-欢迎提出问题和提交 Pull Request！
-
-### 许可证
-
-MIT License
-
-### 开发过程截图
-
-Development Screenshots / 开发过程截图
-
-![Screenshot 1](img/1f0299d6d793b5b743ea318ac55db2f.png)
-
-![Screenshot 2](img/4135957504a3c3f096bc7a41596da37.png)
-
-![Screenshot 3](img/19671528f9a5af38ba8f1a73011f7cb.png) 
+本项目采用 MIT 许可证 - 详见 LICENSE 文件。 

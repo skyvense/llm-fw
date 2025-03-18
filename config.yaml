@@ -1,10 +1,10 @@
 server:
-  host: "0.0.0.0"
+  host: "localhost"
   port: 8080
 
 ollama:
-  url: "http://192.168.8.12:11434"
+  url: "http://localhost:11434"
 
 storage:
   type: "file"
-  path: "./data" 
+  path: "data" 

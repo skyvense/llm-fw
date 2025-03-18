@@ -10,14 +10,21 @@ import (
 	"syscall"
 	"time"
 
+	"llm-fw/config"
 	"llm-fw/metrics"
 	"llm-fw/routes"
 	"llm-fw/storage"
 )
 
 func main() {
+	// 加载配置文件
+	cfg, err := config.LoadConfig("config.yaml")
+	if err != nil {
+		log.Fatalf("Failed to load config: %v", err)
+	}
+
 	// 初始化文件存储
-	fileStorage, err := storage.NewFileStorage("data")
+	fileStorage, err := storage.NewFileStorage(cfg.Storage.Path)
 	if err != nil {
 		log.Fatalf("Failed to initialize file storage: %v", err)
 	}
@@ -29,14 +36,14 @@ func main() {
 	metricsCollector := metrics.NewMetrics()
 
 	// 设置路由
-	router, err := routes.SetupRouter("http://localhost:11434", storageAdapter, metricsCollector)
+	router, err := routes.SetupRouter(cfg.Ollama.URL, storageAdapter, metricsCollector)
 	if err != nil {
 		log.Fatalf("Failed to set up router: %v", err)
 	}
 
 	// 创建服务器
 	server := &http.Server{
-		Addr:    ":8080",
+		Addr:    fmt.Sprintf("%s:%d", cfg.Server.Host, cfg.Server.Port),
 		Handler: router,
 	}
 
@@ -54,7 +61,7 @@ func main() {
 		}
 	}()
 
-	fmt.Println("Server is running on http://localhost:8080")
+	fmt.Printf("Server is running on http://%s:%d\n", cfg.Server.Host, cfg.Server.Port)
 	if err := server.ListenAndServe(); err != http.ErrServerClosed {
 		log.Fatalf("HTTP server error: %v", err)
 	}
