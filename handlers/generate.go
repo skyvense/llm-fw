@@ -12,7 +12,7 @@ import (
 	"github.com/google/uuid"
 
 	"llm-fw/api"
-	"llm-fw/interfaces"
+	"llm-fw/types"
 )
 
 // GenerateRequest 定义了生成请求的结构
@@ -55,12 +55,12 @@ type Usage struct {
 // GenerateHandler 处理生成相关的请求
 type GenerateHandler struct {
 	TargetURL        string
-	Storage          interfaces.Storage
-	MetricsCollector interfaces.MetricsCollector
+	Storage          types.Storage
+	MetricsCollector MetricsCollector
 }
 
 // NewGenerateHandler 创建一个新的生成处理器
-func NewGenerateHandler(targetURL string, storage interfaces.Storage, metricsCollector interfaces.MetricsCollector) *GenerateHandler {
+func NewGenerateHandler(targetURL string, storage types.Storage, metricsCollector MetricsCollector) *GenerateHandler {
 	return &GenerateHandler{
 		TargetURL:        targetURL,
 		Storage:          storage,

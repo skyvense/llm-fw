@@ -3,7 +3,7 @@ server:
   port: 8080
 
 ollama:
-  url: "http://localhost:11434"
+  url: "http://192.168.8.12:11434"
 
 storage:
   type: "file"

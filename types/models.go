@@ -1,55 +1,38 @@
 package types
 
-import (
-	"time"
-
-	"llm-fw/api"
-)
+import "llm-fw/common"
 
 // ModelStats 存储模型的统计信息
-type ModelStats struct {
-	TotalRequests  int64     `json:"total_requests"`
-	TotalTokensIn  int64     `json:"total_tokens_in"`
-	TotalTokensOut int64     `json:"total_tokens_out"`
-	AverageLatency float64   `json:"average_latency"`
-	FailedRequests int64     `json:"failed_requests"`
-	LastUsed       time.Time `json:"last_used"`
-}
+type ModelStats = common.ModelStats
 
 // ModelInfo 表示模型的完整信息
-type ModelInfo struct {
-	Name        string      `json:"name"`
-	Family      string      `json:"family,omitempty"`
-	Parameters  string      `json:"parameters,omitempty"`
-	Format      string      `json:"format,omitempty"`
-	Stats       *ModelStats `json:"stats,omitempty"`
-	LastUsed    *time.Time  `json:"last_used,omitempty"`
-	IsAvailable bool        `json:"is_available"`
-}
+type ModelInfo = common.ModelInfo
 
 // RequestStats 包含请求的统计信息
-type RequestStats struct {
-	TokensIn  int     `json:"tokens_in"`
-	TokensOut int     `json:"tokens_out"`
-	LatencyMs float64 `json:"latency_ms"`
-}
+type RequestStats = common.RequestStats
 
 // HistoryEntry 表示一条历史记录
-type HistoryEntry struct {
-	Model     string           `json:"model"`
-	Prompt    string           `json:"prompt"`
-	Response  string           `json:"response"`
-	Stats     api.RequestStats `json:"stats"`
-	Timestamp time.Time        `json:"timestamp"`
-}
+type HistoryEntry = common.HistoryEntry
 
 // Request 表示一个请求
-type Request struct {
-	ID        string       `json:"id"`
-	UserID    string       `json:"user_id"`
-	Model     string       `json:"model"`
-	Prompt    string       `json:"prompt"`
-	Response  string       `json:"response"`
-	Stats     RequestStats `json:"stats"`
-	Timestamp time.Time    `json:"timestamp"`
+type Request = common.Request
+
+// Metrics 表示指标数据
+type Metrics struct {
+	TotalRequests  int64
+	TotalTokensIn  int64
+	TotalTokensOut int64
+	TotalLatencyMs int64
+	FailedRequests int64
+	ServerHealth   map[string]bool
+	ModelStats     map[string]*ModelStats
+}
+
+// MetricsCollector 定义了指标收集器的接口
+type MetricsCollector interface {
+	RecordRequest(model, server string, tokensIn, tokensOut int64, latency int64, isSuccess bool)
+	GetMetrics() *Metrics
+	UpdateServerHealth(server string, isHealthy bool)
+	CleanupSystemStats()
+	GetAllModelStats() map[string]*ModelStats
 }

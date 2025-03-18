@@ -8,11 +8,11 @@ import (
 	"github.com/gin-gonic/gin"
 
 	"llm-fw/handlers"
-	"llm-fw/interfaces"
+	"llm-fw/types"
 )
 
 // SetupRouter 设置路由器
-func SetupRouter(ollamaURL string, storage interfaces.Storage, metricsCollector interfaces.MetricsCollector) (*gin.Engine, error) {
+func SetupRouter(ollamaURL string, storage types.Storage, metricsCollector types.MetricsCollector) (*gin.Engine, error) {
 	log.Printf("Setting up router with Ollama URL: %s", ollamaURL)
 	router := gin.Default()
 

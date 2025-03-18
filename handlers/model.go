@@ -11,19 +11,18 @@ import (
 	"sync"
 	"time"
 
-	"llm-fw/api"
-	"llm-fw/interfaces"
+	"llm-fw/types"
 )
 
 // ModelInfo represents the model information with stats
 type ModelInfo struct {
-	Name        string          `json:"name"`
-	Family      string          `json:"family,omitempty"`
-	Parameters  string          `json:"parameters,omitempty"`
-	Format      string          `json:"format,omitempty"`
-	Stats       *api.ModelStats `json:"stats,omitempty"`
-	LastUsed    *time.Time      `json:"last_used,omitempty"`
-	IsAvailable bool            `json:"is_available"`
+	Name        string            `json:"name"`
+	Family      string            `json:"family,omitempty"`
+	Parameters  string            `json:"parameters,omitempty"`
+	Format      string            `json:"format,omitempty"`
+	Stats       *types.ModelStats `json:"stats,omitempty"`
+	LastUsed    *time.Time        `json:"last_used,omitempty"`
+	IsAvailable bool              `json:"is_available"`
 }
 
 // OllamaModel used to parse Ollama API response
@@ -51,13 +50,13 @@ type OllamaResponse struct {
 // ModelHandler handles model-related requests
 type ModelHandler struct {
 	ollamaURL        string
-	metricsCollector interfaces.MetricsCollector
+	metricsCollector types.MetricsCollector
 	models           map[string]*ModelInfo
 	mu               sync.RWMutex
 }
 
 // NewModelHandler creates a new model handler
-func NewModelHandler(ollamaURL string, metricsCollector interfaces.MetricsCollector) (*ModelHandler, error) {
+func NewModelHandler(ollamaURL string, metricsCollector types.MetricsCollector) (*ModelHandler, error) {
 	h := &ModelHandler{
 		ollamaURL:        ollamaURL,
 		metricsCollector: metricsCollector,
@@ -207,7 +206,7 @@ func (h *ModelHandler) ListModels(w http.ResponseWriter, r *http.Request) {
 }
 
 // getModelNames 返回所有可用模型的名称列表
-func getModelNames(stats map[string]*api.ModelStats) []string {
+func getModelNames(stats map[string]*types.ModelStats) []string {
 	var names []string
 	for name := range stats {
 		names = append(names, name)

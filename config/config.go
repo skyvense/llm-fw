@@ -1,47 +1,92 @@
 package config
 
 import (
-	"fmt"
 	"os"
+	"strconv"
 
 	"gopkg.in/yaml.v3"
 )
 
-// ServerConfig defines server configuration
-type ServerConfig struct {
-	Host string `yaml:"host"`
-	Port int    `yaml:"port"`
-}
+// StorageType 定义存储类型
+type StorageType string
 
-// OllamaConfig defines Ollama server configuration
-type OllamaConfig struct {
-	URL string `yaml:"url"`
-}
+const (
+	StorageTypeFile   StorageType = "file"
+	StorageTypeSQLite StorageType = "sqlite"
+)
 
-// StorageConfig defines storage configuration
-type StorageConfig struct {
-	Type string `yaml:"type"`
-	Path string `yaml:"path"`
-}
-
-// Config defines application configuration
+// Config 表示应用程序配置
 type Config struct {
-	Server  ServerConfig  `yaml:"server"`
-	Ollama  OllamaConfig  `yaml:"ollama"`
-	Storage StorageConfig `yaml:"storage"`
+	Server struct {
+		Host string `yaml:"host"`
+		Port int    `yaml:"port"`
+	} `yaml:"server"`
+	Ollama struct {
+		URL string `yaml:"url"`
+	} `yaml:"ollama"`
+	Storage struct {
+		Type StorageType `yaml:"type"`
+		Path string      `yaml:"path"`
+	} `yaml:"storage"`
 }
 
-// LoadConfig loads configuration from file
-func LoadConfig(filename string) (*Config, error) {
-	data, err := os.ReadFile(filename)
+// NewConfig 创建新的配置实例
+func NewConfig() *Config {
+	cfg := &Config{
+		Server: struct {
+			Host string `yaml:"host"`
+			Port int    `yaml:"port"`
+		}{
+			Host: "0.0.0.0",
+			Port: 8080,
+		},
+		Ollama: struct {
+			URL string `yaml:"url"`
+		}{
+			URL: "http://localhost:11434",
+		},
+		Storage: struct {
+			Type StorageType `yaml:"type"`
+			Path string      `yaml:"path"`
+		}{
+			Type: StorageTypeFile,
+			Path: "./data",
+		},
+	}
+
+	// 从环境变量加载配置
+	if host := os.Getenv("SERVER_HOST"); host != "" {
+		cfg.Server.Host = host
+	}
+	if port := os.Getenv("SERVER_PORT"); port != "" {
+		if p, err := strconv.Atoi(port); err == nil {
+			cfg.Server.Port = p
+		}
+	}
+	if url := os.Getenv("OLLAMA_URL"); url != "" {
+		cfg.Ollama.URL = url
+	}
+	if storageType := os.Getenv("STORAGE_TYPE"); storageType != "" {
+		cfg.Storage.Type = StorageType(storageType)
+	}
+	if path := os.Getenv("STORAGE_PATH"); path != "" {
+		cfg.Storage.Path = path
+	}
+
+	return cfg
+}
+
+// LoadConfig 从文件加载配置
+func LoadConfig(path string) (*Config, error) {
+	data, err := os.ReadFile(path)
 	if err != nil {
-		return nil, fmt.Errorf("failed to read config file: %v", err)
+		return nil, err
 	}
 
-	var config Config
-	if err := yaml.Unmarshal(data, &config); err != nil {
-		return nil, fmt.Errorf("failed to parse config file: %v", err)
+	var cfg Config
+	if err := yaml.Unmarshal(data, &cfg); err != nil {
+		return nil, err
 	}
 
-	return &config, nil
+	return &cfg, nil
 }

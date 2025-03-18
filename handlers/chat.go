@@ -13,7 +13,7 @@ import (
 	"github.com/google/uuid"
 
 	"llm-fw/api"
-	"llm-fw/interfaces"
+	"llm-fw/types"
 )
 
 // ChatRequest 定义了聊天请求的结构
@@ -39,12 +39,12 @@ type ChatResponse struct {
 // ChatHandler 处理聊天相关的请求
 type ChatHandler struct {
 	TargetURL        string
-	Storage          interfaces.Storage
-	MetricsCollector interfaces.MetricsCollector
+	Storage          types.Storage
+	MetricsCollector MetricsCollector
 }
 
 // NewChatHandler 创建一个新的聊天处理器
-func NewChatHandler(targetURL string, storage interfaces.Storage, metricsCollector interfaces.MetricsCollector) *ChatHandler {
+func NewChatHandler(targetURL string, storage types.Storage, metricsCollector MetricsCollector) *ChatHandler {
 	return &ChatHandler{
 		TargetURL:        targetURL,
 		Storage:          storage,
