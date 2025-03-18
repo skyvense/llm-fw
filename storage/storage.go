@@ -2,143 +2,197 @@ package storage
 
 import (
 	"encoding/json"
+	"fmt"
 	"os"
 	"path/filepath"
+	"sort"
+	"strings"
+
+	"llm-fw/api"
+	"llm-fw/interfaces"
+	"llm-fw/types"
 )
 
 type Storage interface {
-	SaveRequest(req *Request) error
-	GetRequests(userID string) ([]*Request, error)
-	GetAllRequests() ([]*Request, error)
-	GetRequestByID(requestID string) (*Request, error)
+	SaveRequest(req *types.Request) error
+	GetRequests(userID string) ([]*types.Request, error)
+	GetAllRequests() ([]*types.Request, error)
+	GetRequestByID(requestID string) (*types.Request, error)
 	DeleteRequest(requestID string) error
 }
 
+// FileStorage 实现了 Storage 接口
 type FileStorage struct {
-	basePath string
+	baseDir string
 }
 
-func NewFileStorage(basePath string) (*FileStorage, error) {
-	if err := os.MkdirAll(basePath, 0755); err != nil {
-		return nil, err
+// NewFileStorage 创建一个新的文件存储
+func NewFileStorage(baseDir string) (*FileStorage, error) {
+	if err := os.MkdirAll(baseDir, 0755); err != nil {
+		return nil, fmt.Errorf("failed to create base directory: %v", err)
 	}
-	return &FileStorage{basePath: basePath}, nil
+
+	return &FileStorage{
+		baseDir: baseDir,
+	}, nil
 }
 
-func (s *FileStorage) SaveRequest(req *Request) error {
-	userPath := filepath.Join(s.basePath, req.UserID)
-	if err := os.MkdirAll(userPath, 0755); err != nil {
-		return err
+// NewHistoryManager 创建一个新的历史记录管理器
+func (s *FileStorage) NewHistoryManager(size int) interfaces.HistoryManager {
+	return NewHistoryManager(size)
+}
+
+// SaveRequest 保存请求到文件
+func (s *FileStorage) SaveRequest(req *api.Request) error {
+	// 确保用户目录存在
+	userDir := filepath.Join(s.baseDir, req.UserID)
+	if err := os.MkdirAll(userDir, 0755); err != nil {
+		return fmt.Errorf("failed to create user directory: %v", err)
 	}
 
-	filename := filepath.Join(userPath, req.ID+".json")
-	data, err := json.Marshal(req)
+	// 创建请求文件
+	filePath := filepath.Join(userDir, fmt.Sprintf("%s.json", req.ID))
+	file, err := os.Create(filePath)
 	if err != nil {
-		return err
+		return fmt.Errorf("failed to create request file: %v", err)
+	}
+	defer file.Close()
+
+	// 将请求写入文件
+	encoder := json.NewEncoder(file)
+	if err := encoder.Encode(req); err != nil {
+		return fmt.Errorf("failed to encode request: %v", err)
 	}
 
-	return os.WriteFile(filename, data, 0644)
+	return nil
 }
 
-func (s *FileStorage) GetRequests(userID string) ([]*Request, error) {
-	userPath := filepath.Join(s.basePath, userID)
-	entries, err := os.ReadDir(userPath)
+// GetRequests 获取指定用户的所有请求
+func (s *FileStorage) GetRequests(userID string) ([]*api.Request, error) {
+	userDir := filepath.Join(s.baseDir, userID)
+	if _, err := os.Stat(userDir); os.IsNotExist(err) {
+		return []*api.Request{}, nil
+	}
+
+	files, err := os.ReadDir(userDir)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("failed to read user directory: %v", err)
 	}
 
-	var requests []*Request
-	for _, entry := range entries {
-		if entry.IsDir() {
-			continue
-		}
-		data, err := os.ReadFile(filepath.Join(userPath, entry.Name()))
-		if err != nil {
-			continue
-		}
-		var req Request
-		if err := json.Unmarshal(data, &req); err != nil {
-			continue
-		}
-		requests = append(requests, &req)
-	}
-	return requests, nil
-}
-
-func (s *FileStorage) GetAllRequests() ([]*Request, error) {
-	entries, err := os.ReadDir(s.basePath)
-	if err != nil {
-		return nil, err
-	}
-
-	var allRequests []*Request
-	for _, entry := range entries {
-		if !entry.IsDir() {
-			continue
-		}
-		requests, err := s.GetRequests(entry.Name())
-		if err != nil {
-			continue
-		}
-		allRequests = append(allRequests, requests...)
-	}
-	return allRequests, nil
-}
-
-func (s *FileStorage) GetRequestByID(requestID string) (*Request, error) {
-	entries, err := os.ReadDir(s.basePath)
-	if err != nil {
-		return nil, err
-	}
-
-	for _, entry := range entries {
-		if !entry.IsDir() {
-			continue
-		}
-		requests, err := s.GetRequests(entry.Name())
-		if err != nil {
-			continue
-		}
-		for _, req := range requests {
-			if req.ID == requestID {
-				return req, nil
-			}
-		}
-	}
-	return nil, os.ErrNotExist
-}
-
-func (s *FileStorage) DeleteRequest(requestID string) error {
-	entries, err := os.ReadDir(s.basePath)
-	if err != nil {
-		return err
-	}
-
-	for _, entry := range entries {
-		if !entry.IsDir() {
-			continue
-		}
-		userPath := filepath.Join(s.basePath, entry.Name())
-		userEntries, err := os.ReadDir(userPath)
-		if err != nil {
-			continue
-		}
-		for _, userEntry := range userEntries {
-			if userEntry.IsDir() {
-				continue
-			}
-			data, err := os.ReadFile(filepath.Join(userPath, userEntry.Name()))
+	var requests []*api.Request
+	for _, file := range files {
+		if !file.IsDir() && strings.HasSuffix(file.Name(), ".json") {
+			filePath := filepath.Join(userDir, file.Name())
+			file, err := os.Open(filePath)
 			if err != nil {
 				continue
 			}
-			var req Request
-			if err := json.Unmarshal(data, &req); err != nil {
+
+			var req api.Request
+			decoder := json.NewDecoder(file)
+			if err := decoder.Decode(&req); err != nil {
+				file.Close()
 				continue
 			}
-			if req.ID == requestID {
-				return os.Remove(filepath.Join(userPath, userEntry.Name()))
-			}
+			file.Close()
+
+			requests = append(requests, &req)
 		}
 	}
-	return os.ErrNotExist
+
+	// 按时间戳排序
+	sort.Slice(requests, func(i, j int) bool {
+		return requests[i].Timestamp.After(requests[j].Timestamp)
+	})
+
+	return requests, nil
+}
+
+// GetAllRequests 获取所有请求
+func (s *FileStorage) GetAllRequests() ([]*api.Request, error) {
+	var allRequests []*api.Request
+
+	// 遍历所有用户目录
+	entries, err := os.ReadDir(s.baseDir)
+	if err != nil {
+		return nil, fmt.Errorf("failed to read base directory: %v", err)
+	}
+
+	for _, entry := range entries {
+		if entry.IsDir() {
+			userRequests, err := s.GetRequests(entry.Name())
+			if err != nil {
+				continue
+			}
+			allRequests = append(allRequests, userRequests...)
+		}
+	}
+
+	// 按时间戳排序
+	sort.Slice(allRequests, func(i, j int) bool {
+		return allRequests[i].Timestamp.After(allRequests[j].Timestamp)
+	})
+
+	return allRequests, nil
+}
+
+// GetRequestByID 根据ID获取请求
+func (s *FileStorage) GetRequestByID(requestID string) (*api.Request, error) {
+	// 遍历所有用户目录
+	entries, err := os.ReadDir(s.baseDir)
+	if err != nil {
+		return nil, fmt.Errorf("failed to read base directory: %v", err)
+	}
+
+	for _, entry := range entries {
+		if entry.IsDir() {
+			filePath := filepath.Join(s.baseDir, entry.Name(), fmt.Sprintf("%s.json", requestID))
+			if _, err := os.Stat(filePath); os.IsNotExist(err) {
+				continue
+			}
+
+			file, err := os.Open(filePath)
+			if err != nil {
+				continue
+			}
+
+			var req api.Request
+			decoder := json.NewDecoder(file)
+			if err := decoder.Decode(&req); err != nil {
+				file.Close()
+				continue
+			}
+			file.Close()
+
+			return &req, nil
+		}
+	}
+
+	return nil, fmt.Errorf("request not found")
+}
+
+// DeleteRequest 删除请求
+func (s *FileStorage) DeleteRequest(requestID string) error {
+	// 遍历所有用户目录
+	entries, err := os.ReadDir(s.baseDir)
+	if err != nil {
+		return fmt.Errorf("failed to read base directory: %v", err)
+	}
+
+	for _, entry := range entries {
+		if entry.IsDir() {
+			filePath := filepath.Join(s.baseDir, entry.Name(), fmt.Sprintf("%s.json", requestID))
+			if _, err := os.Stat(filePath); os.IsNotExist(err) {
+				continue
+			}
+
+			if err := os.Remove(filePath); err != nil {
+				return fmt.Errorf("failed to delete request file: %v", err)
+			}
+
+			return nil
+		}
+	}
+
+	return fmt.Errorf("request not found")
 }

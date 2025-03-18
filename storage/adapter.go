@@ -1,57 +1,48 @@
 package storage
 
 import (
-	"llm-fw/handlers"
+	"llm-fw/api"
+	"llm-fw/interfaces"
 )
 
-// StorageAdapter adapts FileStorage to handlers.Storage interface
+// StorageAdapter 实现了 Storage 接口
 type StorageAdapter struct {
-	storage *FileStorage
+	storage interfaces.Storage
 }
 
-// NewStorageAdapter creates a new storage adapter
-func NewStorageAdapter(storage *FileStorage) *StorageAdapter {
-	return &StorageAdapter{storage: storage}
-}
-
-func (a *StorageAdapter) SaveRequest(req *handlers.Request) error {
-	return a.storage.SaveRequest(FromHandlerRequest(req))
-}
-
-func (a *StorageAdapter) GetRequests(userID string) ([]*handlers.Request, error) {
-	requests, err := a.storage.GetRequests(userID)
-	if err != nil {
-		return nil, err
+// NewStorageAdapter 创建一个新的存储适配器
+func NewStorageAdapter(storage interfaces.Storage) *StorageAdapter {
+	return &StorageAdapter{
+		storage: storage,
 	}
-
-	handlerRequests := make([]*handlers.Request, len(requests))
-	for i, req := range requests {
-		handlerRequests[i] = req.ToHandlerRequest()
-	}
-	return handlerRequests, nil
 }
 
-func (a *StorageAdapter) GetAllRequests() ([]*handlers.Request, error) {
-	requests, err := a.storage.GetAllRequests()
-	if err != nil {
-		return nil, err
-	}
-
-	handlerRequests := make([]*handlers.Request, len(requests))
-	for i, req := range requests {
-		handlerRequests[i] = req.ToHandlerRequest()
-	}
-	return handlerRequests, nil
+// SaveRequest 保存请求
+func (a *StorageAdapter) SaveRequest(req *api.Request) error {
+	return a.storage.SaveRequest(req)
 }
 
-func (a *StorageAdapter) GetRequestByID(requestID string) (*handlers.Request, error) {
-	request, err := a.storage.GetRequestByID(requestID)
-	if err != nil {
-		return nil, err
-	}
-	return request.ToHandlerRequest(), nil
+// GetRequests 获取指定用户的所有请求
+func (a *StorageAdapter) GetRequests(userID string) ([]*api.Request, error) {
+	return a.storage.GetRequests(userID)
 }
 
+// GetAllRequests 获取所有请求
+func (a *StorageAdapter) GetAllRequests() ([]*api.Request, error) {
+	return a.storage.GetAllRequests()
+}
+
+// GetRequestByID 根据ID获取请求
+func (a *StorageAdapter) GetRequestByID(requestID string) (*api.Request, error) {
+	return a.storage.GetRequestByID(requestID)
+}
+
+// DeleteRequest 删除请求
 func (a *StorageAdapter) DeleteRequest(requestID string) error {
 	return a.storage.DeleteRequest(requestID)
+}
+
+// NewHistoryManager 创建一个新的历史记录管理器
+func (s *StorageAdapter) NewHistoryManager(size int) interfaces.HistoryManager {
+	return NewHistoryManager(size)
 }

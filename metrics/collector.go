@@ -3,188 +3,102 @@ package metrics
 import (
 	"sync"
 	"time"
+
+	"llm-fw/api"
 )
 
+// Metrics 管理所有指标
 type Metrics struct {
-	mu sync.RWMutex
-
-	// 请求统计
-	TotalRequests  int64
-	TotalTokensIn  int64
-	TotalTokensOut int64
-	FailedRequests int64
-	AverageLatency float64
-	TotalLatency   int64
-
-	// 模型统计
-	ModelStats map[string]*ModelMetrics
-
-	// 服务器统计
-	ServerStats map[string]*ServerMetrics
-
-	// 实时统计（最近1小时）
-	RecentRequests []*RequestMetrics
+	mu         sync.RWMutex
+	ModelStats map[string]*api.ModelStats
 }
 
-type ModelMetrics struct {
-	TotalRequests  int64
-	TotalTokensIn  int64
-	TotalTokensOut int64
-	FailedRequests int64
-	AverageLatency float64
-	TotalLatency   int64
-}
-
-type ServerMetrics struct {
-	TotalRequests  int64
-	TotalTokensIn  int64
-	TotalTokensOut int64
-	FailedRequests int64
-	AverageLatency float64
-	TotalLatency   int64
-	IsHealthy      bool
-	LastCheck      time.Time
-}
-
-type RequestMetrics struct {
-	Timestamp time.Time
-	Model     string
-	Server    string
-	TokensIn  int64
-	TokensOut int64
-	Latency   int64
-	IsSuccess bool
-}
-
+// NewMetrics 创建一个新的指标收集器
 func NewMetrics() *Metrics {
 	return &Metrics{
-		ModelStats:     make(map[string]*ModelMetrics),
-		ServerStats:    make(map[string]*ServerMetrics),
-		RecentRequests: make([]*RequestMetrics, 0),
+		ModelStats: make(map[string]*api.ModelStats),
 	}
 }
 
+// RecordRequest 记录一个请求的统计信息
 func (m *Metrics) RecordRequest(model, server string, tokensIn, tokensOut int64, latency int64, isSuccess bool) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 
-	// 更新总体统计
-	m.TotalRequests++
-	m.TotalTokensIn += tokensIn
-	m.TotalTokensOut += tokensOut
-	m.TotalLatency += latency
-	m.AverageLatency = float64(m.TotalLatency) / float64(m.TotalRequests)
-	if !isSuccess {
-		m.FailedRequests++
-	}
-
-	// 更新模型统计
-	if _, exists := m.ModelStats[model]; !exists {
-		m.ModelStats[model] = &ModelMetrics{}
-	}
-	modelStats := m.ModelStats[model]
-	modelStats.TotalRequests++
-	modelStats.TotalTokensIn += tokensIn
-	modelStats.TotalTokensOut += tokensOut
-	modelStats.TotalLatency += latency
-	modelStats.AverageLatency = float64(modelStats.TotalLatency) / float64(modelStats.TotalRequests)
-	if !isSuccess {
-		modelStats.FailedRequests++
-	}
-
-	// 更新服务器统计
-	if _, exists := m.ServerStats[server]; !exists {
-		m.ServerStats[server] = &ServerMetrics{}
-	}
-	serverStats := m.ServerStats[server]
-	serverStats.TotalRequests++
-	serverStats.TotalTokensIn += tokensIn
-	serverStats.TotalTokensOut += tokensOut
-	serverStats.TotalLatency += latency
-	serverStats.AverageLatency = float64(serverStats.TotalLatency) / float64(serverStats.TotalRequests)
-	if !isSuccess {
-		serverStats.FailedRequests++
-	}
-
-	// 更新实时统计
-	now := time.Now()
-	recentMetrics := &RequestMetrics{
-		Timestamp: now,
-		Model:     model,
-		Server:    server,
-		TokensIn:  tokensIn,
-		TokensOut: tokensOut,
-		Latency:   latency,
-		IsSuccess: isSuccess,
-	}
-	m.RecentRequests = append(m.RecentRequests, recentMetrics)
-
-	// 清理超过1小时的数据
-	cutoff := now.Add(-1 * time.Hour)
-	valid := m.RecentRequests[:0]
-	for _, req := range m.RecentRequests {
-		if req.Timestamp.After(cutoff) {
-			valid = append(valid, req)
+	stats, exists := m.ModelStats[model]
+	if !exists {
+		stats = &api.ModelStats{
+			TotalRequests:  0,
+			TotalTokensIn:  0,
+			TotalTokensOut: 0,
+			AverageLatency: 0,
+			FailedRequests: 0,
+			LastUsed:       time.Now(),
 		}
+		m.ModelStats[model] = stats
 	}
-	m.RecentRequests = valid
+
+	stats.TotalRequests++
+	stats.TotalTokensIn += tokensIn
+	stats.TotalTokensOut += tokensOut
+	stats.LastUsed = time.Now()
+
+	// 更新平均延迟
+	if stats.TotalRequests == 1 {
+		stats.AverageLatency = float64(latency)
+	} else {
+		stats.AverageLatency = (stats.AverageLatency*float64(stats.TotalRequests-1) + float64(latency)) / float64(stats.TotalRequests)
+	}
+
+	if !isSuccess {
+		stats.FailedRequests++
+	}
 }
 
-func (m *Metrics) UpdateServerHealth(server string, isHealthy bool) {
-	m.mu.Lock()
-	defer m.mu.Unlock()
-
-	if stats, exists := m.ServerStats[server]; exists {
-		stats.IsHealthy = isHealthy
-		stats.LastCheck = time.Now()
-	}
-}
-
+// GetMetrics 获取所有指标
 func (m *Metrics) GetMetrics() *Metrics {
 	m.mu.RLock()
 	defer m.mu.RUnlock()
 
-	// 创建副本以避免并发访问问题
-	metrics := &Metrics{
-		TotalRequests:  m.TotalRequests,
-		TotalTokensIn:  m.TotalTokensIn,
-		TotalTokensOut: m.TotalTokensOut,
-		FailedRequests: m.FailedRequests,
-		AverageLatency: m.AverageLatency,
-		TotalLatency:   m.TotalLatency,
-		ModelStats:     make(map[string]*ModelMetrics),
-		ServerStats:    make(map[string]*ServerMetrics),
-		RecentRequests: make([]*RequestMetrics, len(m.RecentRequests)),
-	}
+	return m
+}
 
-	// 复制模型统计
-	for k, v := range m.ModelStats {
-		metrics.ModelStats[k] = &ModelMetrics{
-			TotalRequests:  v.TotalRequests,
-			TotalTokensIn:  v.TotalTokensIn,
-			TotalTokensOut: v.TotalTokensOut,
-			FailedRequests: v.FailedRequests,
-			AverageLatency: v.AverageLatency,
-			TotalLatency:   v.TotalLatency,
+// UpdateServerHealth 更新服务器健康状态
+func (m *Metrics) UpdateServerHealth(server string, isHealthy bool) {
+	// 暂时不实现
+}
+
+// GetModelStats 获取指定模型的统计信息
+func (m *Metrics) GetModelStats(model string) *api.ModelStats {
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+
+	if stats, exists := m.ModelStats[model]; exists {
+		return stats
+	}
+	return nil
+}
+
+// GetAllModelStats 获取所有模型的统计信息
+func (m *Metrics) GetAllModelStats() map[string]*api.ModelStats {
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+
+	stats := make(map[string]*api.ModelStats)
+	for model, modelStats := range m.ModelStats {
+		stats[model] = modelStats
+	}
+	return stats
+}
+
+// CleanupSystemStats 清理系统统计信息
+func (m *Metrics) CleanupSystemStats() {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+
+	for model := range m.ModelStats {
+		if model == "system" {
+			delete(m.ModelStats, model)
 		}
 	}
-
-	// 复制服务器统计
-	for k, v := range m.ServerStats {
-		metrics.ServerStats[k] = &ServerMetrics{
-			TotalRequests:  v.TotalRequests,
-			TotalTokensIn:  v.TotalTokensIn,
-			TotalTokensOut: v.TotalTokensOut,
-			FailedRequests: v.FailedRequests,
-			AverageLatency: v.AverageLatency,
-			TotalLatency:   v.TotalLatency,
-			IsHealthy:      v.IsHealthy,
-			LastCheck:      v.LastCheck,
-		}
-	}
-
-	// 复制实时统计
-	copy(metrics.RecentRequests, m.RecentRequests)
-
-	return metrics
 }

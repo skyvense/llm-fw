@@ -1,0 +1,406 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>LLM Forwarder Framework</title>
+    <link href="https://cdn.jsdelivr.net/npm/tailwindcss@2.2.19/dist/tailwind.min.css" rel="stylesheet">
+</head>
+<body class="bg-gray-100">
+    <div class="container mx-auto px-4 py-8">
+        <div class="flex justify-between items-center mb-8">
+            <h1 class="text-3xl font-bold">LLM Forwarder Framework</h1>
+            <div class="flex items-center space-x-4">
+                <button onclick="setLanguage('en')" class="px-3 py-1 text-sm rounded hover:bg-gray-200" id="en-btn">English</button>
+                <button onclick="setLanguage('zh')" class="px-3 py-1 text-sm rounded hover:bg-gray-200" id="zh-btn">中文</button>
+            </div>
+        </div>
+        
+        <div class="text-sm text-gray-500 mb-8 italic">
+            <span data-i18n="note">Note: All code in this project is AI-generated using Claude 3.5 Sonnet</span>
+        </div>
+
+        <!-- Main Content -->
+        <div class="flex flex-col md:flex-row gap-8">
+            <!-- Left Column -->
+            <div class="md:w-2/3">
+                <!-- Model List -->
+                <div class="bg-white rounded-lg shadow p-6 mb-8">
+                    <h2 class="text-xl font-semibold mb-4" data-i18n="available-models">Available Models</h2>
+                    <div id="modelList" class="space-y-4">
+                        <!-- Model list will be loaded dynamically via JavaScript -->
+                    </div>
+                </div>
+
+                <!-- Request History -->
+                <div class="bg-white rounded-lg shadow p-6">
+                    <h2 class="text-xl font-semibold mb-4" data-i18n="request-history">Request History</h2>
+                    <div id="requestHistory" class="space-y-4">
+                        <!-- Request history will be added here -->
+                    </div>
+                </div>
+            </div>
+
+            <!-- Right Column -->
+            <div class="md:w-1/3">
+                <!-- Text Generation -->
+                <div class="bg-white rounded-lg shadow p-6 sticky top-8">
+                    <h2 class="text-xl font-semibold mb-4" data-i18n="generate-text">Generate Text</h2>
+                    <form id="generateForm" class="space-y-4">
+                        <div>
+                            <label class="block text-sm font-medium text-gray-700" data-i18n="select-model">Select Model</label>
+                            <select id="modelSelect" name="model" class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500">
+                                <!-- Model options will be loaded dynamically via JavaScript -->
+                            </select>
+                        </div>
+                        <div>
+                            <label class="block text-sm font-medium text-gray-700" data-i18n="prompt">Prompt</label>
+                            <textarea id="prompt" name="prompt" rows="4" class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500"></textarea>
+                        </div>
+                        <button type="submit" class="w-full inline-flex justify-center py-2 px-4 border border-transparent shadow-sm text-sm font-medium rounded-md text-white bg-indigo-600 hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500" data-i18n="generate">
+                            Generate
+                        </button>
+                    </form>
+                    <div id="response" class="mt-4 p-4 bg-gray-50 rounded-md hidden">
+                        <pre class="whitespace-pre-wrap"></pre>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // 语言配置
+        const i18n = {
+            en: {
+                "note": "Note: All code in this project is AI-generated using Claude 3.5 Sonnet",
+                "available-models": "Available Models",
+                "generate-text": "Generate Text",
+                "select-model": "Select Model",
+                "prompt": "Prompt",
+                "generate": "Generate",
+                "request-history": "Request History",
+                "model-statistics": "Model Statistics",
+                "no-models": "No models available",
+                "select-model-prompt": "Select a model",
+                "view-stats": "View Stats",
+                "total-requests": "Total Requests",
+                "total-tokens": "Total Tokens",
+                "average-latency": "Average Latency",
+                "success-rate": "Success Rate",
+                "no-stats": "No statistics available yet",
+                "error-loading-stats": "Error loading statistics",
+                "generating": "Generating...",
+                "copy": "Copy",
+                "copied": "Copied!",
+                "tokens-in": "Tokens In",
+                "tokens-out": "Tokens Out",
+                "latency": "Latency",
+                "prompt-label": "Prompt",
+                "response-label": "Response",
+                "model-status": "Status",
+                "model-online": "Online",
+                "model-offline": "Offline",
+                "model-loading": "Loading...",
+                "last-updated": "Last updated"
+            },
+            zh: {
+                "note": "注意：本项目所有代码均由 Claude 3.5 Sonnet 人工智能生成",
+                "available-models": "可用模型",
+                "generate-text": "生成文本",
+                "select-model": "选择模型",
+                "prompt": "提示词",
+                "generate": "生成",
+                "request-history": "请求历史",
+                "model-statistics": "模型统计",
+                "no-models": "没有可用的模型",
+                "select-model-prompt": "请选择模型",
+                "view-stats": "查看统计",
+                "total-requests": "总请求数",
+                "total-tokens": "总Token数",
+                "average-latency": "平均延迟",
+                "success-rate": "成功率",
+                "no-stats": "暂无统计数据",
+                "error-loading-stats": "加载统计信息失败",
+                "generating": "生成中...",
+                "copy": "复制",
+                "copied": "已复制！",
+                "tokens-in": "输入Token数",
+                "tokens-out": "输出Token数",
+                "latency": "延迟",
+                "prompt-label": "提示词",
+                "response-label": "响应",
+                "model-status": "状态",
+                "model-online": "在线",
+                "model-offline": "离线",
+                "model-loading": "加载中...",
+                "last-updated": "最后更新"
+            }
+        };
+
+        // 设置语言
+        function setLanguage(lang) {
+            document.documentElement.lang = lang;
+            document.getElementById('en-btn').classList.toggle('bg-gray-200', lang === 'en');
+            document.getElementById('zh-btn').classList.toggle('bg-gray-200', lang === 'zh');
+            
+            // 更新所有带有 data-i18n 属性的元素
+            document.querySelectorAll('[data-i18n]').forEach(element => {
+                const key = element.getAttribute('data-i18n');
+                if (i18n[lang][key]) {
+                    if (element.tagName === 'INPUT' || element.tagName === 'TEXTAREA') {
+                        element.placeholder = i18n[lang][key];
+                    } else {
+                        element.textContent = i18n[lang][key];
+                    }
+                }
+            });
+
+            // 保存语言选择
+            localStorage.setItem('preferred-language', lang);
+            
+            // 重新加载模型列表和统计信息
+            fetchModels();
+        }
+
+        // 格式化时间戳
+        function formatTimestamp(timestamp) {
+            return new Date(timestamp).toLocaleString(document.documentElement.lang);
+        }
+
+        // 添加请求记录到历史记录
+        function addRequestToHistory(request) {
+            const historyDiv = document.getElementById('requestHistory');
+            const requestDiv = document.createElement('div');
+            requestDiv.className = 'p-4 border rounded-lg bg-gray-50';
+            
+            const timestamp = new Date().toLocaleString(document.documentElement.lang);
+            const lang = document.documentElement.lang;
+            requestDiv.innerHTML = `
+                <div class="flex justify-between items-start">
+                    <div class="flex-1">
+                        <h3 class="font-medium text-gray-900">${request.model}</h3>
+                        <p class="text-sm text-gray-500">${timestamp}</p>
+                    </div>
+                    <div class="text-sm text-gray-500 text-right">
+                        <p>${i18n[lang]["tokens-in"]}: ${request.stats.tokens_in}</p>
+                        <p>${i18n[lang]["tokens-out"]}: ${request.stats.tokens_out}</p>
+                        <p>${i18n[lang]["latency"]}: ${request.stats.latency_ms}ms</p>
+                    </div>
+                </div>
+                <div class="mt-2">
+                    <p class="text-sm text-gray-600"><strong>${i18n[lang]["prompt-label"]}:</strong> ${request.prompt}</p>
+                    <p class="text-sm text-gray-600 mt-1"><strong>${i18n[lang]["response-label"]}:</strong> ${request.response}</p>
+                </div>
+            `;
+            
+            // 限制显示最新的5条记录
+            const existingRequests = historyDiv.children;
+            if (existingRequests.length >= 5) {
+                historyDiv.removeChild(existingRequests[existingRequests.length - 1]);
+            }
+            
+            historyDiv.insertBefore(requestDiv, historyDiv.firstChild);
+        }
+
+        // 获取历史记录
+        async function fetchRequestHistory() {
+            try {
+                const response = await fetch('/api/history?limit=5');
+                if (!response.ok) {
+                    throw new Error('Failed to fetch history');
+                }
+                
+                const data = await response.json();
+                const historyDiv = document.getElementById('requestHistory');
+                historyDiv.innerHTML = '';
+                
+                data.history.forEach(request => {
+                    addRequestToHistory(request);
+                });
+            } catch (error) {
+                console.error('Failed to fetch request history:', error);
+                const historyDiv = document.getElementById('requestHistory');
+                historyDiv.innerHTML = `
+                    <div class="p-4 border rounded-lg bg-red-50 text-red-700">
+                        Error loading request history: ${error.message}
+                    </div>
+                `;
+            }
+        }
+
+        // Fetch model list and start auto-update
+        async function fetchModels() {
+            try {
+                const response = await fetch('/api/models?stats_only=true');
+                if (!response.ok) {
+                    const errorData = await response.json();
+                    throw new Error(errorData.error || 'Failed to fetch models');
+                }
+                
+                const data = await response.json();
+                const modelList = document.getElementById('modelList');
+                const lang = document.documentElement.lang;
+                
+                modelList.innerHTML = '';
+                
+                if (!data.models || data.models.length === 0) {
+                    modelList.innerHTML = `<div class="p-4 border rounded-lg bg-yellow-50 text-yellow-700">${i18n[lang]["no-models"]}</div>`;
+                    return;
+                }
+                
+                data.models.forEach(modelInfo => {
+                    // Add to model list
+                    const div = document.createElement('div');
+                    div.className = 'p-4 border rounded-lg';
+                    div.id = `model-${modelInfo.name}`;
+
+                    // 获取统计信息，如果存在的话
+                    const stats = modelInfo.stats || {};
+                    const lastUsed = modelInfo.last_used ? new Date(modelInfo.last_used) : null;
+                    const successRate = stats.total_requests > 0 
+                        ? ((stats.total_requests - stats.failed_requests) / stats.total_requests * 100).toFixed(1)
+                        : '0.0';
+
+                    div.innerHTML = `
+                        <div class="flex items-center justify-between">
+                            <div class="flex-1">
+                                <h3 class="font-medium">${modelInfo.name}</h3>
+                            </div>
+                            <div class="flex items-center space-x-8 text-sm">
+                                <div class="stats-container">
+                                    <div class="flex items-center space-x-4">
+                                        <span class="text-gray-500">${i18n[lang]["total-requests"]}: <span class="total-requests">${stats.total_requests || 0}</span></span>
+                                        <span class="text-gray-500">${i18n[lang]["tokens-in"]}: <span class="tokens-in">${stats.total_tokens_in || 0}</span></span>
+                                        <span class="text-gray-500">${i18n[lang]["tokens-out"]}: <span class="tokens-out">${stats.total_tokens_out || 0}</span></span>
+                                        <span class="text-gray-500">${i18n[lang]["average-latency"]}: <span class="average-latency">${(stats.average_latency || 0).toFixed(1)}</span>ms</span>
+                                        <span class="text-gray-500">${i18n[lang]["success-rate"]}: <span class="success-rate">${successRate}</span>%</span>
+                                    </div>
+                                </div>
+                                <div class="status-container">
+                                    <span class="status-indicator px-2 py-1 rounded text-sm ${modelInfo.is_available ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800'}">
+                                        ${modelInfo.is_available ? i18n[lang]["model-online"] : i18n[lang]["model-offline"]}
+                                    </span>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="mt-2 text-xs text-gray-400">
+                            <span class="last-updated">${i18n[lang]["last-updated"]}: ${lastUsed ? lastUsed.toLocaleTimeString(lang) : '-'}</span>
+                        </div>
+                    `;
+                    modelList.appendChild(div);
+                });
+
+                // Set up auto-refresh
+                setTimeout(fetchModels, 30000); // Update every 30 seconds
+            } catch (error) {
+                console.error('Failed to fetch model list:', error);
+                const modelList = document.getElementById('modelList');
+                modelList.innerHTML = `
+                    <div class="p-4 border rounded-lg bg-red-50 text-red-700">
+                        Error: ${error.message}
+                    </div>
+                `;
+                // Retry after error
+                setTimeout(fetchModels, 5000);
+            }
+        }
+
+        // Load model list for the selector
+        async function loadModelSelector() {
+            try {
+                const response = await fetch('/api/models?stats_only=false');
+                if (!response.ok) {
+                    const errorData = await response.json();
+                    throw new Error(errorData.error || 'Failed to fetch models');
+                }
+                
+                const data = await response.json();
+                const modelSelect = document.getElementById('modelSelect');
+                const lang = document.documentElement.lang;
+                
+                modelSelect.innerHTML = `<option value="">${i18n[lang]["select-model-prompt"]}</option>`;
+                
+                if (data.models && data.models.length > 0) {
+                    data.models.forEach(modelInfo => {
+                        const option = document.createElement('option');
+                        option.value = modelInfo.name;
+                        option.textContent = modelInfo.name;
+                        modelSelect.appendChild(option);
+                    });
+                }
+            } catch (error) {
+                console.error('Failed to load model selector:', error);
+                const modelSelect = document.getElementById('modelSelect');
+                modelSelect.innerHTML = `<option value="">${i18n[lang]["no-models"]}</option>`;
+            }
+        }
+
+        // Handle generate form submission
+        document.getElementById('generateForm').addEventListener('submit', async (e) => {
+            e.preventDefault();
+            const model = document.getElementById('modelSelect').value;
+            const prompt = document.getElementById('prompt').value;
+            const lang = document.documentElement.lang;
+            
+            if (!model || !prompt) {
+                alert(i18n[lang]["select-model-prompt"]);
+                return;
+            }
+
+            const responseDiv = document.getElementById('response');
+            const responsePre = responseDiv.querySelector('pre');
+            responseDiv.classList.remove('hidden');
+            responsePre.textContent = i18n[lang]["generating"];
+            responsePre.className = 'whitespace-pre-wrap text-gray-500 italic';
+
+            try {
+                const response = await fetch('/api/generate', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify({ model, prompt }),
+                });
+                
+                if (!response.ok) {
+                    const errorData = await response.json();
+                    throw new Error(errorData.error || 'Generation failed');
+                }
+
+                const data = await response.json();
+                responsePre.textContent = data.response;
+                responsePre.className = 'whitespace-pre-wrap';
+
+                addRequestToHistory({
+                    model: model,
+                    prompt: prompt,
+                    response: data.response,
+                    stats: data.stats,
+                    timestamp: new Date()
+                });
+
+            } catch (error) {
+                console.error('Generation failed:', error);
+                responsePre.textContent = `Error: ${error.message}`;
+                responsePre.className = 'whitespace-pre-wrap text-red-600';
+            }
+        });
+
+        // Initialize
+        document.addEventListener('DOMContentLoaded', () => {
+            // 设置初始语言
+            const savedLang = localStorage.getItem('preferred-language') || 'en';
+            setLanguage(savedLang);
+            
+            // 加载模型列表、选择器和历史记录
+            fetchModels();
+            loadModelSelector();
+            fetchRequestHistory();
+
+            // 定期刷新历史记录
+            setInterval(fetchRequestHistory, 30000); // 每30秒更新一次
+        });
+    </script>
+</body>
+</html> 

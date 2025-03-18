@@ -1,64 +1,61 @@
 package main
 
 import (
+	"context"
 	"fmt"
 	"log"
 	"net/http"
+	"os"
+	"os/signal"
+	"syscall"
 	"time"
 
-	"llm-fw/config"
 	"llm-fw/metrics"
 	"llm-fw/routes"
 	"llm-fw/storage"
 )
 
 func main() {
-	// Load configuration
-	cfg, err := config.LoadConfig("config.yaml")
+	// 初始化文件存储
+	fileStorage, err := storage.NewFileStorage("data")
 	if err != nil {
-		log.Fatalf("Failed to load configuration: %v", err)
+		log.Fatalf("Failed to initialize file storage: %v", err)
 	}
 
-	// Initialize storage
-	fileStorage, err := storage.NewFileStorage(cfg.Storage.Path)
-	if err != nil {
-		log.Fatalf("Failed to initialize storage: %v", err)
-	}
-
-	// Create storage adapter
+	// 初始化存储适配器
 	storageAdapter := storage.NewStorageAdapter(fileStorage)
 
-	// Set up metrics collector
+	// 初始化指标收集器
 	metricsCollector := metrics.NewMetrics()
 
-	// Start server health check
-	go func() {
-		for {
-			isHealthy := checkServerHealth(cfg.Ollama.URL)
-			metricsCollector.UpdateServerHealth("ollama", isHealthy)
-			time.Sleep(30 * time.Second)
-		}
-	}()
-
-	// Set up router
-	router, err := routes.SetupRouter(cfg.Ollama.URL, storageAdapter, metricsCollector)
+	// 设置路由
+	router, err := routes.SetupRouter("http://localhost:11434", storageAdapter, metricsCollector)
 	if err != nil {
 		log.Fatalf("Failed to set up router: %v", err)
 	}
 
-	// Start server
-	addr := fmt.Sprintf("%s:%d", cfg.Server.Host, cfg.Server.Port)
-	log.Printf("Server started on %s", addr)
-	if err := router.Run(addr); err != nil {
-		log.Fatalf("Server failed to start: %v", err)
+	// 创建服务器
+	server := &http.Server{
+		Addr:    ":8080",
+		Handler: router,
 	}
-}
 
-func checkServerHealth(url string) bool {
-	resp, err := http.Get(fmt.Sprintf("%s/api/health", url))
-	if err != nil {
-		return false
+	// 优雅关闭
+	go func() {
+		sigChan := make(chan os.Signal, 1)
+		signal.Notify(sigChan, syscall.SIGINT, syscall.SIGTERM)
+		<-sigChan
+
+		shutdownCtx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+		defer cancel()
+
+		if err := server.Shutdown(shutdownCtx); err != nil {
+			log.Printf("HTTP server shutdown error: %v", err)
+		}
+	}()
+
+	fmt.Println("Server is running on http://localhost:8080")
+	if err := server.ListenAndServe(); err != http.ErrServerClosed {
+		log.Fatalf("HTTP server error: %v", err)
 	}
-	defer resp.Body.Close()
-	return resp.StatusCode == http.StatusOK
 }

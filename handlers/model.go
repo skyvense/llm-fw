@@ -8,176 +8,206 @@ import (
 	"net/http"
 	"sort"
 	"strings"
+	"sync"
 	"time"
 
-	"llm-fw/metrics"
-
-	"github.com/gin-gonic/gin"
+	"llm-fw/api"
+	"llm-fw/interfaces"
 )
+
+// ModelInfo represents the model information with stats
+type ModelInfo struct {
+	Name        string          `json:"name"`
+	Family      string          `json:"family,omitempty"`
+	Parameters  string          `json:"parameters,omitempty"`
+	Format      string          `json:"format,omitempty"`
+	Stats       *api.ModelStats `json:"stats,omitempty"`
+	LastUsed    *time.Time      `json:"last_used,omitempty"`
+	IsAvailable bool            `json:"is_available"`
+}
 
 // OllamaModel used to parse Ollama API response
 type OllamaModel struct {
 	Name        string    `json:"name"`
+	Model       string    `json:"model"`
 	Modified_at time.Time `json:"modified_at"`
 	Size        int64     `json:"size"`
 	Digest      string    `json:"digest"`
+	Details     struct {
+		ParentModel       string   `json:"parent_model"`
+		Format            string   `json:"format"`
+		Family            string   `json:"family"`
+		Families          []string `json:"families"`
+		ParameterSize     string   `json:"parameter_size"`
+		QuantizationLevel string   `json:"quantization_level"`
+	} `json:"details"`
+}
+
+// OllamaResponse represents the full response from Ollama API
+type OllamaResponse struct {
+	Models []OllamaModel `json:"models"`
 }
 
 // ModelHandler handles model-related requests
 type ModelHandler struct {
-	TargetURL        string
-	MetricsCollector MetricsCollector
+	ollamaURL        string
+	metricsCollector interfaces.MetricsCollector
+	models           map[string]*ModelInfo
+	mu               sync.RWMutex
 }
 
 // NewModelHandler creates a new model handler
-func NewModelHandler(targetURL string, metricsCollector MetricsCollector) *ModelHandler {
-	return &ModelHandler{
-		TargetURL:        targetURL,
-		MetricsCollector: metricsCollector,
+func NewModelHandler(ollamaURL string, metricsCollector interfaces.MetricsCollector) (*ModelHandler, error) {
+	h := &ModelHandler{
+		ollamaURL:        ollamaURL,
+		metricsCollector: metricsCollector,
+		models:           make(map[string]*ModelInfo),
 	}
+
+	// 初始化时获取模型列表
+	if err := h.refreshModels(); err != nil {
+		return nil, fmt.Errorf("failed to initialize model list: %v", err)
+	}
+
+	// 启动定期刷新
+	go h.startRefreshLoop()
+
+	return h, nil
 }
 
-// ListModels handles requests to get model list
-func (h *ModelHandler) ListModels(c *gin.Context) {
-	startTime := time.Now()
-
-	client := &http.Client{
-		Timeout: 10 * time.Second,
-	}
-
-	apiURL := h.TargetURL + "/api/tags"
-	log.Printf("Attempting to fetch model list: %s", apiURL)
-
-	req, err := http.NewRequest("GET", apiURL, nil)
+// refreshModels 从 Ollama 获取最新的模型列表
+func (h *ModelHandler) refreshModels() error {
+	log.Printf("Fetching models from Ollama at %s", h.ollamaURL)
+	resp, err := http.Get(fmt.Sprintf("%s/api/tags", h.ollamaURL))
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{
-			"error": fmt.Sprintf("failed to create request: %v", err),
-		})
-		return
-	}
-
-	req.Header.Set("Accept", "application/json")
-
-	resp, err := client.Do(req)
-	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{
-			"error": fmt.Sprintf("failed to send request: %v", err),
-		})
-		return
+		return fmt.Errorf("failed to get models from Ollama: %v", err)
 	}
 	defer resp.Body.Close()
 
-	log.Printf("Received response status code: %d", resp.StatusCode)
-
-	if resp.StatusCode != http.StatusOK {
-		c.JSON(http.StatusInternalServerError, gin.H{
-			"error": fmt.Sprintf("server returned error status code: %d", resp.StatusCode),
-		})
-		return
-	}
-
 	body, err := io.ReadAll(resp.Body)
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{
-			"error": fmt.Sprintf("failed to read response: %v", err),
-		})
+		return fmt.Errorf("failed to read response: %v", err)
+	}
+
+	var ollamaResp OllamaResponse
+	if err := json.Unmarshal(body, &ollamaResp); err != nil {
+		log.Printf("Failed to parse Ollama response: %s", string(body))
+		return fmt.Errorf("failed to parse response: %v", err)
+	}
+
+	h.mu.Lock()
+	defer h.mu.Unlock()
+
+	// 更新模型列表
+	for _, model := range ollamaResp.Models {
+		modelName := strings.TrimSpace(model.Name)
+		if _, exists := h.models[modelName]; !exists {
+			log.Printf("Found new model: %s (Family: %s, Parameters: %s)",
+				modelName, model.Details.Family, model.Details.ParameterSize)
+			h.models[modelName] = &ModelInfo{
+				Name:        modelName,
+				Family:      model.Details.Family,
+				Parameters:  model.Details.ParameterSize,
+				Format:      model.Details.Format,
+				IsAvailable: true,
+			}
+		} else {
+			h.models[modelName].IsAvailable = true
+		}
+	}
+
+	log.Printf("Successfully refreshed models, total count: %d", len(ollamaResp.Models))
+	return nil
+}
+
+// startRefreshLoop 定期刷新模型列表
+func (h *ModelHandler) startRefreshLoop() {
+	log.Printf("Starting model refresh loop with 30-second interval")
+	ticker := time.NewTicker(30 * time.Second)
+	defer ticker.Stop()
+
+	for range ticker.C {
+		log.Printf("Refreshing models...")
+		if err := h.refreshModels(); err != nil {
+			log.Printf("Failed to refresh models: %v", err)
+		}
+	}
+}
+
+// ListModels handles requests to get model list with their stats
+func (h *ModelHandler) ListModels(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
 		return
 	}
 
-	log.Printf("Received response content: %s", string(body))
+	// 获取查询参数
+	statsOnly := r.URL.Query().Get("stats_only") == "true"
 
-	var response struct {
-		Models []struct {
-			Name string `json:"name"`
-		} `json:"models"`
+	// 获取所有模型的统计信息
+	modelStats := h.metricsCollector.GetAllModelStats()
+
+	h.mu.RLock()
+	defer h.mu.RUnlock()
+
+	// 创建模型信息列表
+	models := make([]*ModelInfo, 0)
+	seenModels := make(map[string]bool)
+
+	// 首先添加有统计信息的模型
+	for modelName, stats := range modelStats {
+		if statsOnly && stats.TotalRequests == 0 {
+			continue
+		}
+
+		modelName = strings.TrimSpace(modelName)
+		seenModels[modelName] = true
+
+		modelInfo, exists := h.models[modelName]
+		if !exists {
+			modelInfo = &ModelInfo{
+				Name:        modelName,
+				IsAvailable: false,
+			}
+		}
+		modelInfo.Stats = stats
+		modelInfo.LastUsed = &stats.LastUsed
+
+		models = append(models, modelInfo)
 	}
 
-	if err := json.Unmarshal(body, &response); err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{
-			"error": fmt.Sprintf("failed to parse response: %v", err),
-		})
-		return
+	// 如果不是只显示有统计的模型，添加其他可用模型
+	if !statsOnly {
+		for modelName, modelInfo := range h.models {
+			if !seenModels[modelName] {
+				models = append(models, modelInfo)
+			}
+		}
 	}
 
-	var modelList []string
-	for _, model := range response.Models {
-		modelList = append(modelList, model.Name)
-	}
+	// 按最后使用时间排序
+	sort.Slice(models, func(i, j int) bool {
+		if models[i].LastUsed == nil && models[j].LastUsed == nil {
+			return models[i].Name < models[j].Name
+		}
+		if models[i].LastUsed == nil {
+			return false
+		}
+		if models[j].LastUsed == nil {
+			return true
+		}
+		return models[i].LastUsed.After(*models[j].LastUsed)
+	})
 
-	if len(modelList) == 0 {
-		c.JSON(http.StatusInternalServerError, gin.H{
-			"error": "no models found",
-		})
-		return
-	}
-
-	sort.Strings(modelList)
-	latency := time.Since(startTime).Milliseconds()
-
-	h.MetricsCollector.RecordRequest(
-		"system",
-		"list_models",
-		0,
-		int64(len(modelList)),
-		latency,
-		true,
-	)
-
-	c.JSON(http.StatusOK, gin.H{
-		"models":     modelList,
-		"total":      len(modelList),
-		"latency_ms": latency,
+	// 返回响应
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(map[string]interface{}{
+		"models": models,
 	})
 }
 
-// GetModelStats handles requests to get model statistics
-func (h *ModelHandler) GetModelStats(c *gin.Context) {
-	model := strings.TrimSpace(c.Param("model"))
-	log.Printf("Getting stats for model: %s", model)
-
-	metrics := h.MetricsCollector.GetMetrics()
-	if metrics == nil {
-		log.Printf("No metrics data available")
-		c.JSON(http.StatusOK, gin.H{
-			"total_requests":  0,
-			"total_tokens":    0,
-			"average_latency": 0,
-			"success_rate":    0,
-		})
-		return
-	}
-
-	modelNames := getModelNames(metrics.ModelStats)
-	log.Printf("Available models in stats: %v", modelNames)
-	log.Printf("Looking for exact match of model: %s", model)
-
-	if stats, exists := metrics.ModelStats[model]; exists {
-		log.Printf("Found stats for model %s: %+v", model, stats)
-		totalTokens := stats.TotalTokensIn + stats.TotalTokensOut
-		successRate := 0.0
-		if stats.TotalRequests > 0 {
-			successRate = float64(stats.TotalRequests-stats.FailedRequests) / float64(stats.TotalRequests) * 100
-		}
-
-		c.JSON(http.StatusOK, gin.H{
-			"total_requests":  stats.TotalRequests,
-			"total_tokens":    totalTokens,
-			"average_latency": stats.AverageLatency,
-			"success_rate":    successRate,
-		})
-	} else {
-		log.Printf("No stats found for model: %s (available models: %v)", model, modelNames)
-		c.JSON(http.StatusOK, gin.H{
-			"total_requests":  0,
-			"total_tokens":    0,
-			"average_latency": 0,
-			"success_rate":    0,
-		})
-	}
-}
-
 // getModelNames 返回所有可用模型的名称列表
-func getModelNames(stats map[string]*metrics.ModelMetrics) []string {
+func getModelNames(stats map[string]*api.ModelStats) []string {
 	var names []string
 	for name := range stats {
 		names = append(names, name)

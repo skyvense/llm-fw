@@ -3,7 +3,7 @@ package handlers
 import (
 	"bytes"
 	"encoding/json"
-	"io"
+	"fmt"
 	"log"
 	"net/http"
 	"strings"
@@ -11,6 +11,9 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
+
+	"llm-fw/api"
+	"llm-fw/interfaces"
 )
 
 // ChatRequest 定义了聊天请求的结构
@@ -27,15 +30,21 @@ type ChatMessage struct {
 	Content string `json:"content"`
 }
 
+// ChatResponse 定义聊天响应的结构
+type ChatResponse struct {
+	Response string           `json:"response"`
+	Stats    api.RequestStats `json:"stats"`
+}
+
 // ChatHandler 处理聊天相关的请求
 type ChatHandler struct {
 	TargetURL        string
-	Storage          Storage
-	MetricsCollector MetricsCollector
+	Storage          interfaces.Storage
+	MetricsCollector interfaces.MetricsCollector
 }
 
 // NewChatHandler 创建一个新的聊天处理器
-func NewChatHandler(targetURL string, storage Storage, metricsCollector MetricsCollector) *ChatHandler {
+func NewChatHandler(targetURL string, storage interfaces.Storage, metricsCollector interfaces.MetricsCollector) *ChatHandler {
 	return &ChatHandler{
 		TargetURL:        targetURL,
 		Storage:          storage,
@@ -45,9 +54,49 @@ func NewChatHandler(targetURL string, storage Storage, metricsCollector MetricsC
 
 // Chat 处理聊天请求
 func (h *ChatHandler) Chat(c *gin.Context) {
+	if c.Request.Method != http.MethodPost {
+		c.JSON(http.StatusMethodNotAllowed, gin.H{"error": "Method not allowed"})
+		return
+	}
+
+	// 设置 CORS 头
+	c.Header("Access-Control-Allow-Origin", "http://127.0.0.1")
+	c.Header("Access-Control-Allow-Methods", "POST, OPTIONS")
+	c.Header("Access-Control-Allow-Headers", "Content-Type")
+	c.Header("Vary", "Origin")
+
+	// 处理 OPTIONS 请求
+	if c.Request.Method == http.MethodOptions {
+		c.Status(http.StatusOK)
+		return
+	}
+
 	var req ChatRequest
-	if err := c.ShouldBindJSON(&req); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+	if err := json.NewDecoder(c.Request.Body).Decode(&req); err != nil {
+		// 如果 JSON 解析失败，尝试从查询参数获取
+		model := c.Query("model")
+		message := c.Query("message")
+		if model != "" && message != "" {
+			req.Model = model
+			req.Messages = []ChatMessage{
+				{
+					Role:    "user",
+					Content: message,
+				},
+			}
+		} else {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid request body or missing parameters"})
+			return
+		}
+	}
+
+	// 验证请求
+	if req.Model == "" {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Model is required"})
+		return
+	}
+	if len(req.Messages) == 0 {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "At least one message is required"})
 		return
 	}
 
@@ -57,209 +106,156 @@ func (h *ChatHandler) Chat(c *gin.Context) {
 
 	startTime := time.Now()
 
-	client := &http.Client{
-		Timeout: 300 * time.Second,
+	// 调用Ollama API
+	ollamaReq := map[string]interface{}{
+		"model":    req.Model,
+		"messages": req.Messages,
+		"stream":   true, // 始终启用流式响应
 	}
 
-	// 设置 stream 为 true 以获取 token 信息
-	req.Stream = true
-	jsonBody, err := json.Marshal(req)
+	ollamaReqBody, err := json.Marshal(ollamaReq)
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to build request"})
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to marshal request"})
 		return
 	}
 
-	proxyReq, err := http.NewRequest("POST", h.TargetURL+"/api/chat", bytes.NewBuffer(jsonBody))
+	resp, err := http.Post(fmt.Sprintf("%s/api/chat", h.TargetURL), "application/json", bytes.NewBuffer(ollamaReqBody))
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to create request"})
+		log.Printf("Failed to call Ollama API: %v", err)
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to call Ollama API"})
 		return
 	}
-	proxyReq.Header.Set("Content-Type", "application/json")
+	defer resp.Body.Close()
 
-	proxyResp, err := client.Do(proxyReq)
-	if err != nil {
-		log.Printf("Failed to send request to model server: %v", err)
-		h.MetricsCollector.RecordRequest(
-			req.Model,
-			"proxy",
-			int64(len(req.Messages[len(req.Messages)-1].Content)),
-			0,
-			time.Since(startTime).Milliseconds(),
-			false,
-		)
-		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
-		return
-	}
-	defer proxyResp.Body.Close()
-
-	if proxyResp.StatusCode != http.StatusOK {
-		log.Printf("Model server returned error status code: %d", proxyResp.StatusCode)
-		h.MetricsCollector.RecordRequest(
-			req.Model,
-			"proxy",
-			int64(len(req.Messages[len(req.Messages)-1].Content)),
-			0,
-			time.Since(startTime).Milliseconds(),
-			false,
-		)
-		c.JSON(proxyResp.StatusCode, gin.H{"error": "model server returned error"})
-		return
-	}
-
-	// 设置响应头，支持流式传输
+	// 设置响应头
 	c.Header("Content-Type", "application/x-ndjson")
 	c.Header("Cache-Control", "no-cache")
 	c.Header("Connection", "keep-alive")
 	c.Header("Transfer-Encoding", "chunked")
 
-	// 读取流式响应
-	decoder := json.NewDecoder(proxyResp.Body)
+	// 创建响应通道
+	responseChan := make(chan string, 100)
+	errorChan := make(chan error, 1)
+
+	// 创建共享变量
 	var fullResponse strings.Builder
-	var totalTokensIn int64
-	var totalTokensOut int64
-	var lastError error
+	var promptEvalCount, evalCount float64
 
+	// 启动goroutine处理响应
+	go func() {
+		decoder := json.NewDecoder(resp.Body)
+
+		for decoder.More() {
+			var chunk map[string]interface{}
+			if err := decoder.Decode(&chunk); err != nil {
+				errorChan <- fmt.Errorf("failed to decode response chunk: %v", err)
+				return
+			}
+
+			// 从消息中提取响应文本
+			if message, ok := chunk["message"].(map[string]interface{}); ok {
+				if content, ok := message["content"].(string); ok {
+					fullResponse.WriteString(content)
+					responseChan <- content
+				}
+			}
+
+			// 更新token计数
+			if count, ok := chunk["prompt_eval_count"].(float64); ok {
+				promptEvalCount = count
+			}
+			if count, ok := chunk["eval_count"].(float64); ok {
+				evalCount = count
+			}
+		}
+
+		// 发送完成信号
+		responseChan <- ""
+	}()
+
+	// 处理响应流
 	for {
-		var streamResp struct {
-			Message struct {
-				Content string `json:"content"`
-				Role    string `json:"role"`
-			} `json:"message"`
-			Done   bool `json:"done"`
-			Prompt struct {
-				Tokens []any `json:"tokens"`
-			} `json:"prompt"`
-			Generation struct {
-				Tokens []any `json:"tokens"`
-			} `json:"generation"`
-		}
+		select {
+		case content := <-responseChan:
+			if content == "" {
+				// 响应完成
+				latency := time.Since(startTime).Milliseconds()
+				stats := api.RequestStats{
+					TokensIn:  int(promptEvalCount),
+					TokensOut: int(evalCount),
+					LatencyMs: float64(latency),
+				}
 
-		if err := decoder.Decode(&streamResp); err != nil {
-			if err == io.EOF {
-				break
+				// 更新指标
+				h.MetricsCollector.RecordRequest(
+					req.Model,
+					"ollama",
+					int64(stats.TokensIn),
+					int64(stats.TokensOut),
+					latency,
+					true,
+				)
+
+				// 保存到存储
+				storageReq := &api.Request{
+					ID:        uuid.New().String(),
+					UserID:    req.UserID,
+					Model:     req.Model,
+					Prompt:    req.Messages[len(req.Messages)-1].Content,
+					Response:  fullResponse.String(),
+					TokensIn:  stats.TokensIn,
+					TokensOut: stats.TokensOut,
+					Server:    "ollama",
+					Timestamp: time.Now(),
+				}
+
+				if err := h.Storage.SaveRequest(storageReq); err != nil {
+					log.Printf("Failed to save chat request: %v", err)
+				}
+
+				// 发送最终统计信息
+				finalResponse := map[string]interface{}{
+					"model":      req.Model,
+					"created_at": time.Now().Format(time.RFC3339),
+					"message": map[string]interface{}{
+						"role":    "assistant",
+						"content": fullResponse.String(),
+					},
+					"done": true,
+					"stats": map[string]interface{}{
+						"prompt_eval_count": promptEvalCount,
+						"eval_count":        evalCount,
+						"eval_duration":     float64(latency) / 1000.0,
+					},
+				}
+				finalJSON, _ := json.Marshal(finalResponse)
+				c.Writer.Write(finalJSON)
+				c.Writer.Write([]byte("\n"))
+				c.Writer.Flush()
+				return
 			}
-			lastError = err
-			break
-		}
-
-		// 更新 token 计数
-		if len(streamResp.Prompt.Tokens) > 0 {
-			totalTokensIn = int64(len(streamResp.Prompt.Tokens))
-		}
-		if len(streamResp.Generation.Tokens) > 0 {
-			totalTokensOut += int64(len(streamResp.Generation.Tokens))
-		}
-
-		// 构建流式响应
-		response := gin.H{
-			"message": streamResp.Message,
-			"done":    streamResp.Done,
-		}
-
-		// 如果是最后一个响应，添加统计信息
-		if streamResp.Done {
-			response["stats"] = gin.H{
-				"tokens_in":  totalTokensIn,
-				"tokens_out": totalTokensOut,
-				"latency_ms": time.Since(startTime).Milliseconds(),
+			// 发送内容块
+			messageEvent := map[string]interface{}{
+				"model":      req.Model,
+				"created_at": time.Now().Format(time.RFC3339),
+				"message": map[string]interface{}{
+					"role":    "assistant",
+					"content": content,
+				},
+				"done": false,
 			}
+			messageJSON, _ := json.Marshal(messageEvent)
+			c.Writer.Write(messageJSON)
+			c.Writer.Write([]byte("\n"))
+			c.Writer.Flush()
+
+		case err := <-errorChan:
+			log.Printf("Error processing response: %v", err)
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to process response"})
+			return
+
+		case <-c.Request.Context().Done():
+			return
 		}
-
-		// 发送流式响应
-		data, err := json.Marshal(response)
-		if err != nil {
-			lastError = err
-			break
-		}
-		c.Writer.Write(data)
-		c.Writer.Write([]byte("\n"))
-		c.Writer.Flush()
-
-		fullResponse.WriteString(streamResp.Message.Content)
-
-		if streamResp.Done {
-			break
-		}
-	}
-
-	if lastError != nil {
-		log.Printf("Error during streaming: %v", lastError)
-		h.MetricsCollector.RecordRequest(
-			req.Model,
-			"proxy",
-			totalTokensIn,
-			totalTokensOut,
-			time.Since(startTime).Milliseconds(),
-			false,
-		)
-		return
-	}
-
-	response := fullResponse.String()
-	latency := time.Since(startTime).Milliseconds()
-
-	// 如果没有获取到 token 数量，使用估算值
-	if totalTokensIn == 0 {
-		var totalPromptLength int64
-		for _, msg := range req.Messages {
-			totalPromptLength += int64(len(msg.Content))
-		}
-		totalTokensIn = totalPromptLength / 4
-	}
-	if totalTokensOut == 0 {
-		totalTokensOut = int64(len(response) / 4)
-	}
-
-	// 规范化模型名称
-	modelName := strings.TrimSpace(req.Model)
-	log.Printf("Chat request details:")
-	log.Printf("  Model: %s", modelName)
-	log.Printf("  User: %s", req.UserID)
-	log.Printf("  Messages count: %d", len(req.Messages))
-	log.Printf("  Last message length: %d characters", len(req.Messages[len(req.Messages)-1].Content))
-	log.Printf("  Response length: %d characters", len(response))
-	log.Printf("  Tokens In: %d", totalTokensIn)
-	log.Printf("  Tokens Out: %d", totalTokensOut)
-	log.Printf("  Latency: %dms", latency)
-	log.Printf("  Server: proxy")
-
-	// 记录请求统计
-	h.MetricsCollector.RecordRequest(
-		modelName,
-		"proxy",
-		totalTokensIn,
-		totalTokensOut,
-		latency,
-		true,
-	)
-
-	// 验证统计信息是否已记录
-	metrics := h.MetricsCollector.GetMetrics()
-	if metrics != nil {
-		if stats, exists := metrics.ModelStats[modelName]; exists {
-			log.Printf("Model statistics after chat request:")
-			log.Printf("  Total requests: %d", stats.TotalRequests)
-			log.Printf("  Total tokens in: %d", stats.TotalTokensIn)
-			log.Printf("  Total tokens out: %d", stats.TotalTokensOut)
-			log.Printf("  Average latency: %.2fms", stats.AverageLatency)
-			log.Printf("  Failed requests: %d", stats.FailedRequests)
-		} else {
-			log.Printf("Warning: Stats not found for model %s immediately after recording", modelName)
-		}
-	}
-
-	storageReq := &Request{
-		ID:        uuid.New().String(),
-		UserID:    req.UserID,
-		Model:     modelName,
-		Prompt:    req.Messages[len(req.Messages)-1].Content,
-		Response:  response,
-		TokensIn:  int(totalTokensIn),
-		TokensOut: int(totalTokensOut),
-		Server:    "proxy",
-	}
-
-	if err := h.Storage.SaveRequest(storageReq); err != nil {
-		log.Printf("Failed to save chat request: %v", err)
 	}
 }
