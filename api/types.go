@@ -13,6 +13,7 @@ type Request struct {
 	TokensOut int       `json:"tokens_out"`
 	Server    string    `json:"server"`
 	Timestamp time.Time `json:"timestamp"`
+	Source    string    `json:"source"` // 请求来源：internal_ui, external_ui, api
 }
 
 // RequestStats 包含请求的统计信息

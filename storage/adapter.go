@@ -44,5 +44,5 @@ func (a *StorageAdapter) DeleteRequest(requestID string) error {
 
 // NewHistoryManager 创建一个新的历史记录管理器
 func (s *StorageAdapter) NewHistoryManager(size int) interfaces.HistoryManager {
-	return NewHistoryManager(size)
+	return NewHistoryManager(s.storage, size)
 }

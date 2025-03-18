@@ -174,7 +174,7 @@
             const requestDiv = document.createElement('div');
             requestDiv.className = 'p-4 border rounded-lg bg-gray-50';
             
-            const timestamp = new Date().toLocaleString(document.documentElement.lang);
+            const timestamp = new Date(request.timestamp).toLocaleString(document.documentElement.lang);
             const lang = document.documentElement.lang;
             requestDiv.innerHTML = `
                 <div class="flex justify-between items-start">
@@ -183,9 +183,9 @@
                         <p class="text-sm text-gray-500">${timestamp}</p>
                     </div>
                     <div class="text-sm text-gray-500 text-right">
-                        <p>${i18n[lang]["tokens-in"]}: ${request.stats.tokens_in}</p>
-                        <p>${i18n[lang]["tokens-out"]}: ${request.stats.tokens_out}</p>
-                        <p>${i18n[lang]["latency"]}: ${request.stats.latency_ms}ms</p>
+                        <p>${i18n[lang]["tokens-in"]}: ${request.tokens_in}</p>
+                        <p>${i18n[lang]["tokens-out"]}: ${request.tokens_out}</p>
+                        <p>${i18n[lang]["latency"]}: ${request.latency_ms || 0}ms</p>
                     </div>
                 </div>
                 <div class="mt-2">
@@ -215,7 +215,7 @@
                 const historyDiv = document.getElementById('requestHistory');
                 historyDiv.innerHTML = '';
                 
-                data.history.forEach(request => {
+                data.requests.forEach(request => {
                     addRequestToHistory(request);
                 });
             } catch (error) {

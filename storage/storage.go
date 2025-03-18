@@ -10,15 +10,16 @@ import (
 
 	"llm-fw/api"
 	"llm-fw/interfaces"
-	"llm-fw/types"
 )
 
+// Storage 定义了存储接口
 type Storage interface {
-	SaveRequest(req *types.Request) error
-	GetRequests(userID string) ([]*types.Request, error)
-	GetAllRequests() ([]*types.Request, error)
-	GetRequestByID(requestID string) (*types.Request, error)
+	SaveRequest(req *api.Request) error
+	GetRequests(userID string) ([]*api.Request, error)
+	GetAllRequests() ([]*api.Request, error)
+	GetRequestByID(requestID string) (*api.Request, error)
 	DeleteRequest(requestID string) error
+	NewHistoryManager(size int) interfaces.HistoryManager
 }
 
 // FileStorage 实现了 Storage 接口
@@ -39,7 +40,7 @@ func NewFileStorage(baseDir string) (*FileStorage, error) {
 
 // NewHistoryManager 创建一个新的历史记录管理器
 func (s *FileStorage) NewHistoryManager(size int) interfaces.HistoryManager {
-	return NewHistoryManager(size)
+	return NewHistoryManager(s, size)
 }
 
 // SaveRequest 保存请求到文件

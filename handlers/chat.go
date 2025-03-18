@@ -100,9 +100,12 @@ func (h *ChatHandler) Chat(c *gin.Context) {
 		return
 	}
 
-	if req.UserID == "" {
-		req.UserID = "anonymous_" + uuid.New().String()[:8]
+	// 从请求头中获取用户ID，如果没有则生成一个
+	userID := c.GetHeader("X-User-ID")
+	if userID == "" {
+		userID = "anonymous_" + uuid.New().String()[:8]
 	}
+	req.UserID = userID
 
 	startTime := time.Now()
 
@@ -207,6 +210,7 @@ func (h *ChatHandler) Chat(c *gin.Context) {
 					TokensOut: stats.TokensOut,
 					Server:    "ollama",
 					Timestamp: time.Now(),
+					Source:    "external_ui", // 标记请求来源
 				}
 
 				if err := h.Storage.SaveRequest(storageReq); err != nil {

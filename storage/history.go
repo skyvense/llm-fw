@@ -2,29 +2,33 @@ package storage
 
 import (
 	"container/ring"
+	"sort"
 	"sync"
 	"time"
 
 	"llm-fw/api"
+	"llm-fw/interfaces"
 )
 
 // HistoryManager 管理请求历史记录
 type HistoryManager struct {
+	storage interfaces.Storage
 	history *ring.Ring
 	mu      sync.RWMutex
 	size    int
 }
 
 // NewHistoryManager 创建一个新的历史记录管理器
-func NewHistoryManager(size int) *HistoryManager {
+func NewHistoryManager(storage interfaces.Storage, size int) *HistoryManager {
 	return &HistoryManager{
+		storage: storage,
 		history: ring.New(size),
 		size:    size,
 	}
 }
 
 // AddEntry 添加一条新的历史记录
-func (hm *HistoryManager) AddEntry(entry api.HistoryEntry) error {
+func (hm *HistoryManager) AddEntry(entry api.Request) error {
 	hm.mu.Lock()
 	defer hm.mu.Unlock()
 
@@ -36,22 +40,19 @@ func (hm *HistoryManager) AddEntry(entry api.HistoryEntry) error {
 }
 
 // GetHistory 获取历史记录
-func (hm *HistoryManager) GetHistory() ([]api.HistoryEntry, error) {
-	hm.mu.RLock()
-	defer hm.mu.RUnlock()
-
-	entries := make([]api.HistoryEntry, 0, hm.size)
-	current := hm.history.Prev()
-
-	for i := 0; i < hm.size; i++ {
-		if current.Value == nil {
-			break
-		}
-		entries = append(entries, current.Value.(api.HistoryEntry))
-		current = current.Prev()
+func (hm *HistoryManager) GetHistory() ([]*api.Request, error) {
+	// 从存储中获取所有请求
+	requests, err := hm.storage.GetAllRequests()
+	if err != nil {
+		return nil, err
 	}
 
-	return entries, nil
+	// 按时间戳降序排序
+	sort.Slice(requests, func(i, j int) bool {
+		return requests[i].Timestamp.After(requests[j].Timestamp)
+	})
+
+	return requests, nil
 }
 
 // ClearHistory 清空历史记录

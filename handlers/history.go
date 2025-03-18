@@ -2,6 +2,8 @@ package handlers
 
 import (
 	"net/http"
+	"sort"
+	"strconv"
 
 	"github.com/gin-gonic/gin"
 
@@ -28,17 +30,47 @@ func (h *HistoryHandler) GetHistory(c *gin.Context) {
 		return
 	}
 
-	entries, err := h.historyManager.GetHistory()
+	// 设置 CORS 头
+	c.Header("Access-Control-Allow-Origin", "*")
+	c.Header("Access-Control-Allow-Methods", "GET, OPTIONS")
+	c.Header("Access-Control-Allow-Headers", "Content-Type")
+	c.Header("Vary", "Origin")
+
+	// 处理 OPTIONS 请求
+	if c.Request.Method == http.MethodOptions {
+		c.Status(http.StatusOK)
+		return
+	}
+
+	// 获取限制参数
+	limit := 5 // 默认显示5条
+	if limitStr := c.Query("limit"); limitStr != "" {
+		if parsedLimit, err := strconv.Atoi(limitStr); err == nil && parsedLimit > 0 {
+			limit = parsedLimit
+		}
+	}
+
+	requests, err := h.historyManager.GetHistory()
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to get history"})
 		return
 	}
 
-	c.JSON(http.StatusOK, gin.H{"entries": entries})
+	// 确保按时间戳降序排序
+	sort.Slice(requests, func(i, j int) bool {
+		return requests[i].Timestamp.After(requests[j].Timestamp)
+	})
+
+	// 限制返回数量
+	if len(requests) > limit {
+		requests = requests[:limit]
+	}
+
+	c.JSON(http.StatusOK, gin.H{"requests": requests})
 }
 
 // AddEntry 添加一条历史记录
-func (h *HistoryHandler) AddEntry(entry api.HistoryEntry) error {
+func (h *HistoryHandler) AddEntry(entry api.Request) error {
 	return h.historyManager.AddEntry(entry)
 }
 
