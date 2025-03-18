@@ -1,23 +1,23 @@
 # LLM Framework
 
-A lightweight framework for building LLM applications with Ollama integration.
+A proxy server for Ollama with monitoring and statistics capabilities.
 
-一个轻量级的 LLM 应用框架，集成了 Ollama.
+一个带有监控和统计功能的 Ollama 代理服务器。
 
 ## Features 特性
 
-- 🚀 Easy integration with Ollama
+- 🔄 Proxy requests to Ollama server
 - 📊 Real-time metrics monitoring
 - 💾 Request history storage
 - 🌐 Web UI interface
-- 🔄 Streaming response support
+- ⚡ Streaming response support
 - 📝 Configurable through YAML
 
-- 🚀 轻松集成 Ollama
+- 🔄 代理转发 Ollama 服务器请求
 - 📊 实时指标监控
 - 💾 请求历史存储
 - 🌐 Web 界面
-- 🔄 流式响应支持
+- ⚡ 流式响应支持
 - 📝 通过 YAML 配置
 
 ## Prerequisites 前置条件
@@ -47,7 +47,7 @@ server:
   port: 8080
 
 ollama:
-  url: "http://localhost:11434"
+  url: "http://localhost:11434"  # Your Ollama server address 你的 Ollama 服务器地址
 
 storage:
   type: "file"
@@ -66,6 +66,15 @@ go run main.go
 http://localhost:8080
 ```
 
+3. Use the proxy server instead of directly accessing Ollama 使用代理服务器而不是直接访问 Ollama:
+```bash
+# Instead of 替代
+curl http://localhost:11434/api/generate
+
+# Use 使用
+curl http://localhost:8080/api/generate
+```
+
 ## Configuration 配置说明
 
 The application can be configured through `config.yaml` in the root directory:
@@ -74,8 +83,8 @@ The application can be configured through `config.yaml` in the root directory:
 
 ```yaml
 server:
-  host: "localhost"    # Server host 服务器主机
-  port: 8080          # Server port 服务器端口
+  host: "localhost"    # Proxy server host 代理服务器主机
+  port: 8080          # Proxy server port 代理服务器端口
 
 ollama:
   url: "http://localhost:11434"  # Ollama server URL Ollama 服务器地址
@@ -87,8 +96,8 @@ storage:
 
 ## API Endpoints API 接口
 
-- `GET /api/models` - List available models 列出可用模型
-- `POST /api/generate` - Generate text 生成文本
+- `GET /api/models` - List available models from Ollama 列出 Ollama 可用模型
+- `POST /api/generate` - Generate text (proxied to Ollama) 生成文本（代理到 Ollama）
 - `GET /api/history` - Get request history 获取请求历史
 - `GET /api/metrics` - Get metrics 获取指标
 
