@@ -14,6 +14,14 @@ func main() {
 	// 初始化配置
 	cfg := config.NewConfig()
 
+	// 尝试加载配置文件
+	if loadedCfg, err := config.LoadConfig("config.yaml"); err == nil {
+		cfg = loadedCfg
+		log.Println("已加载配置文件 config.yaml")
+	} else {
+		log.Printf("未找到配置文件，使用默认配置: %v", err)
+	}
+
 	// 初始化存储
 	storage, err := storage.NewStorage(cfg)
 	if err != nil {
