@@ -11,7 +11,6 @@ import (
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
 
-	"llm-fw/api"
 	"llm-fw/types"
 )
 
@@ -190,7 +189,7 @@ func (h *GenerateHandler) Generate(c *gin.Context) {
 	)
 
 	// 保存到存储
-	storageReq := &api.Request{
+	storageReq := &types.Request{
 		ID:        response.ID,
 		UserID:    "system",
 		Model:     req.Model,

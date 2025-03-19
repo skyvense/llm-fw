@@ -31,6 +31,21 @@ type Storage interface {
 
 	// Close 关闭存储连接
 	Close() error
+
+	// GetModelStatsHistory 获取模型统计历史
+	GetModelStatsHistory(model string, limit int) ([]*ModelStatsHistory, error)
+
+	// ListModelStatsHistory 获取所有模型统计历史
+	ListModelStatsHistory(limit int) ([]*ModelStatsHistory, error)
+
+	// SaveModelStats 保存模型统计信息
+	SaveModelStats(model string, stats *ModelStats) error
+
+	// SaveModelStatsHistory 保存模型统计历史
+	SaveModelStatsHistory(history *ModelStatsHistory) error
+
+	// ListRequests 获取请求列表
+	ListRequests(limit int) ([]*Request, error)
 }
 
 // HistoryManager 定义了历史记录管理器的接口

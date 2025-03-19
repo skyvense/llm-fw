@@ -55,3 +55,15 @@ type Request struct {
 	Timestamp time.Time `json:"timestamp"`
 	Source    string    `json:"source"` // 请求来源：internal_ui, external_ui, api
 }
+
+// ModelStatsHistory 表示模型统计历史记录
+type ModelStatsHistory struct {
+	ID             string    `json:"id"`
+	Model          string    `json:"model"`
+	TotalRequests  int64     `json:"total_requests"`
+	FailedRequests int64     `json:"failed_requests"`
+	TotalTokensIn  int64     `json:"total_tokens_in"`
+	TotalTokensOut int64     `json:"total_tokens_out"`
+	AverageLatency float64   `json:"average_latency"`
+	Timestamp      time.Time `json:"timestamp"`
+}

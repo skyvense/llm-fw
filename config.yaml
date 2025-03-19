@@ -6,5 +6,5 @@ ollama:
   url: "http://192.168.8.12:11434"
 
 storage:
-  type: "file"
-  path: "data" 
+  type: "sqlite"
+  path: "data/llm-fw.db"

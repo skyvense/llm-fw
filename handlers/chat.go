@@ -12,7 +12,6 @@ import (
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
 
-	"llm-fw/api"
 	"llm-fw/types"
 )
 
@@ -32,23 +31,25 @@ type ChatMessage struct {
 
 // ChatResponse 定义聊天响应的结构
 type ChatResponse struct {
-	Response string           `json:"response"`
-	Stats    api.RequestStats `json:"stats"`
+	Response string             `json:"response"`
+	Stats    types.RequestStats `json:"stats"`
 }
 
 // ChatHandler 处理聊天相关的请求
 type ChatHandler struct {
 	TargetURL        string
 	Storage          types.Storage
-	MetricsCollector MetricsCollector
+	MetricsCollector types.MetricsCollector
+	ollamaURL        string
 }
 
-// NewChatHandler 创建一个新的聊天处理器
-func NewChatHandler(targetURL string, storage types.Storage, metricsCollector MetricsCollector) *ChatHandler {
+// NewChatHandler creates a new chat handler
+func NewChatHandler(storage types.Storage, ollamaURL string) *ChatHandler {
 	return &ChatHandler{
-		TargetURL:        targetURL,
 		Storage:          storage,
-		MetricsCollector: metricsCollector,
+		ollamaURL:        ollamaURL,
+		TargetURL:        ollamaURL,
+		MetricsCollector: &types.NoopMetricsCollector{},
 	}
 }
 
@@ -183,7 +184,7 @@ func (h *ChatHandler) Chat(c *gin.Context) {
 			if content == "" {
 				// 响应完成
 				latency := time.Since(startTime).Milliseconds()
-				stats := api.RequestStats{
+				stats := types.RequestStats{
 					TokensIn:  int(promptEvalCount),
 					TokensOut: int(evalCount),
 					LatencyMs: float64(latency),
@@ -200,7 +201,7 @@ func (h *ChatHandler) Chat(c *gin.Context) {
 				)
 
 				// 保存到存储
-				storageReq := &api.Request{
+				storageReq := &types.Request{
 					ID:        uuid.New().String(),
 					UserID:    req.UserID,
 					Model:     req.Model,
@@ -247,20 +248,56 @@ func (h *ChatHandler) Chat(c *gin.Context) {
 					"role":    "assistant",
 					"content": content,
 				},
-				"done": false,
 			}
-			messageJSON, _ := json.Marshal(messageEvent)
-			c.Writer.Write(messageJSON)
+			jsonData, _ := json.Marshal(messageEvent)
+			c.Writer.Write(jsonData)
 			c.Writer.Write([]byte("\n"))
 			c.Writer.Flush()
-
 		case err := <-errorChan:
 			log.Printf("Error processing response: %v", err)
 			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to process response"})
 			return
+		}
+	}
+}
 
-		case <-c.Request.Context().Done():
+// HandleGetHistory handles GET /api/history requests
+func (h *ChatHandler) HandleGetHistory(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	limit := 100 // Default limit
+
+	// Parse limit parameter
+	if limitStr := r.URL.Query().Get("limit"); limitStr != "" {
+		if _, err := fmt.Sscanf(limitStr, "%d", &limit); err != nil {
+			http.Error(w, "Invalid limit parameter", http.StatusBadRequest)
 			return
 		}
 	}
+
+	// Get history from storage
+	requests, err := h.Storage.ListRequests(limit)
+	if err != nil {
+		http.Error(w, fmt.Sprintf("Failed to get history: %v", err), http.StatusInternalServerError)
+		return
+	}
+
+	// Return response
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(map[string]interface{}{
+		"requests": requests,
+	})
+}
+
+// HandleChat handles chat requests
+func (h *ChatHandler) HandleChat(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	// ... rest of the implementation ...
 }

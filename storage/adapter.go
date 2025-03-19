@@ -42,7 +42,27 @@ func (a *StorageAdapter) DeleteRequest(requestID string) error {
 	return a.storage.DeleteRequest(requestID)
 }
 
+// GetModelStats 获取模型统计信息
+func (a *StorageAdapter) GetModelStats(model string) (*types.ModelStats, error) {
+	return a.storage.GetModelStats(model)
+}
+
+// GetAllModelStats 获取所有模型的统计信息
+func (a *StorageAdapter) GetAllModelStats() (map[string]*types.ModelStats, error) {
+	return a.storage.GetAllModelStats()
+}
+
+// GetRecentRequests 获取最近的请求记录
+func (a *StorageAdapter) GetRecentRequests(limit int) ([]*common.Request, error) {
+	return a.storage.GetRecentRequests(limit)
+}
+
 // NewHistoryManager 创建一个新的历史记录管理器
 func (s *StorageAdapter) NewHistoryManager(size int) types.HistoryManager {
 	return NewHistoryManager(s.storage, size)
+}
+
+// Close 关闭存储连接
+func (a *StorageAdapter) Close() error {
+	return a.storage.Close()
 }

@@ -3,348 +3,468 @@ package storage
 import (
 	"database/sql"
 	"fmt"
+	"sync"
 
-	"llm-fw/common"
 	"llm-fw/types"
 
 	_ "github.com/mattn/go-sqlite3"
 )
 
-// SQLiteStorage 实现了 Storage 接口
+// Request represents a generation request
+type Request = types.Request
+
+// ModelStats represents statistics for a model
+type ModelStats = types.ModelStats
+
+// SQLiteStorage implements the types.Storage interface using SQLite
 type SQLiteStorage struct {
 	db *sql.DB
+	mu sync.RWMutex
 }
 
-// NewSQLiteStorage 创建一个新的 SQLite 存储
-func NewSQLiteStorage(dbPath string) (types.Storage, error) {
+// NewSQLiteStorage creates a new SQLite storage instance
+func NewSQLiteStorage(dbPath string) (*SQLiteStorage, error) {
 	db, err := sql.Open("sqlite3", dbPath)
 	if err != nil {
-		return nil, fmt.Errorf("打开数据库失败: %v", err)
+		return nil, fmt.Errorf("failed to open database: %v", err)
 	}
 
-	if err := db.Ping(); err != nil {
-		return nil, fmt.Errorf("连接数据库失败: %v", err)
+	s := &SQLiteStorage{db: db}
+	if err := s.initDB(); err != nil {
+		db.Close()
+		return nil, fmt.Errorf("failed to initialize database: %v", err)
 	}
 
-	// 创建表
-	if err := createTables(db); err != nil {
-		return nil, fmt.Errorf("创建表失败: %v", err)
-	}
-
-	return &SQLiteStorage{
-		db: db,
-	}, nil
+	return s, nil
 }
 
-// createTables 创建必要的数据库表
-func createTables(db *sql.DB) error {
-	// 创建请求表
-	_, err := db.Exec(`
-		CREATE TABLE IF NOT EXISTS requests (
-			id TEXT PRIMARY KEY,
-			user_id TEXT NOT NULL,
-			model TEXT NOT NULL,
-			prompt TEXT NOT NULL,
-			response TEXT,
-			tokens_in INTEGER,
-			tokens_out INTEGER,
-			latency_ms INTEGER,
-			status INTEGER,
-			error TEXT,
-			timestamp DATETIME NOT NULL,
-			server TEXT,
-			source TEXT
-		)
-	`)
-	if err != nil {
-		return err
-	}
-
-	// 创建模型统计表
-	_, err = db.Exec(`
-		CREATE TABLE IF NOT EXISTS model_stats (
-			model TEXT PRIMARY KEY,
-			total_requests INTEGER DEFAULT 0,
-			total_tokens_in INTEGER DEFAULT 0,
-			total_tokens_out INTEGER DEFAULT 0,
-			average_latency REAL DEFAULT 0,
-			failed_requests INTEGER DEFAULT 0,
-			last_used DATETIME
-		)
-	`)
-	return err
-}
-
-// SaveRequest 保存请求记录
-func (s *SQLiteStorage) SaveRequest(req *common.Request) error {
-	// 开始事务
-	tx, err := s.db.Begin()
-	if err != nil {
-		return fmt.Errorf("开始事务失败: %v", err)
-	}
-	defer tx.Rollback()
-
-	// 插入请求记录
-	_, err = tx.Exec(`
+// SaveRequest saves a request to the database
+func (s *SQLiteStorage) SaveRequest(req *types.Request) error {
+	_, err := s.db.Exec(`
 		INSERT INTO requests (
-			id, user_id, model, prompt, response, tokens_in, tokens_out,
-			latency_ms, status, error, timestamp, server, source
+			id, user_id, model, prompt, response, tokens_in, tokens_out, server, latency_ms, status, error, timestamp, source
 		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 	`,
-		req.ID, req.UserID, req.Model, req.Prompt, req.Response,
-		req.TokensIn, req.TokensOut, req.LatencyMs, req.Status,
-		req.Error, req.Timestamp, req.Server, req.Source)
-	if err != nil {
-		return fmt.Errorf("插入请求记录失败: %v", err)
-	}
-
-	// 更新模型统计
-	if err := s.updateModelStats(tx, req); err != nil {
-		return err
-	}
-
-	// 提交事务
-	if err := tx.Commit(); err != nil {
-		return fmt.Errorf("提交事务失败: %v", err)
-	}
-
-	return nil
-}
-
-// updateModelStats 更新模型统计信息
-func (s *SQLiteStorage) updateModelStats(tx *sql.Tx, req *common.Request) error {
-	// 更新或插入模型统计
-	_, err := tx.Exec(`
-		INSERT INTO model_stats (
-			model, total_requests, total_tokens_in, total_tokens_out,
-			average_latency, failed_requests, last_used
-		) VALUES (?, 1, ?, ?, ?, ?, ?)
-		ON CONFLICT(model) DO UPDATE SET
-			total_requests = total_requests + 1,
-			total_tokens_in = total_tokens_in + ?,
-			total_tokens_out = total_tokens_out + ?,
-			average_latency = (average_latency * total_requests + ?) / (total_requests + 1),
-			failed_requests = failed_requests + ?,
-			last_used = ?
-	`,
-		req.Model, req.TokensIn, req.TokensOut, req.LatencyMs,
-		req.Status, req.Timestamp, req.TokensIn, req.TokensOut,
-		req.LatencyMs, req.Status, req.Timestamp)
+		req.ID,
+		req.UserID,
+		req.Model,
+		req.Prompt,
+		req.Response,
+		req.TokensIn,
+		req.TokensOut,
+		req.Server,
+		req.LatencyMs,
+		req.Status,
+		req.Error,
+		req.Timestamp,
+		req.Source,
+	)
 	return err
 }
 
-// GetModelStats 获取模型统计信息
-func (s *SQLiteStorage) GetModelStats(model string) (*types.ModelStats, error) {
-	var stats types.ModelStats
+// GetRequest retrieves a request by ID
+func (s *SQLiteStorage) GetRequest(id string) (*types.Request, error) {
+	var req types.Request
 	err := s.db.QueryRow(`
-		SELECT total_requests, total_tokens_in, total_tokens_out,
-			average_latency, failed_requests, last_used
-		FROM model_stats
-		WHERE model = ?
-	`, model).Scan(&stats.TotalRequests, &stats.TotalTokensIn,
-		&stats.TotalTokensOut, &stats.AverageLatency, &stats.FailedRequests,
-		&stats.LastUsed)
+		SELECT id, user_id, model, prompt, response, tokens_in, tokens_out, server, latency_ms, status, error, timestamp, source
+		FROM requests
+		WHERE id = ?
+	`, id).Scan(
+		&req.ID,
+		&req.UserID,
+		&req.Model,
+		&req.Prompt,
+		&req.Response,
+		&req.TokensIn,
+		&req.TokensOut,
+		&req.Server,
+		&req.LatencyMs,
+		&req.Status,
+		&req.Error,
+		&req.Timestamp,
+		&req.Source,
+	)
 	if err == sql.ErrNoRows {
-		return &types.ModelStats{}, nil
+		return nil, nil
 	}
 	if err != nil {
-		return nil, fmt.Errorf("查询模型统计失败: %v", err)
+		return nil, err
 	}
-	return &stats, nil
+	return &req, nil
 }
 
-// GetAllModelStats 获取所有模型的统计信息
-func (s *SQLiteStorage) GetAllModelStats() (map[string]*types.ModelStats, error) {
+// ListRequests retrieves requests with limit
+func (s *SQLiteStorage) ListRequests(limit int) ([]*types.Request, error) {
 	rows, err := s.db.Query(`
-		SELECT model, total_requests, total_tokens_in, total_tokens_out,
-			average_latency, failed_requests, last_used
-		FROM model_stats
-	`)
-	if err != nil {
-		return nil, fmt.Errorf("查询模型统计失败: %v", err)
-	}
-	defer rows.Close()
-
-	stats := make(map[string]*types.ModelStats)
-	for rows.Next() {
-		var model string
-		var s types.ModelStats
-		err := rows.Scan(&model, &s.TotalRequests, &s.TotalTokensIn,
-			&s.TotalTokensOut, &s.AverageLatency, &s.FailedRequests,
-			&s.LastUsed)
-		if err != nil {
-			return nil, fmt.Errorf("扫描模型统计失败: %v", err)
-		}
-		stats[model] = &s
-	}
-	return stats, nil
-}
-
-// GetRecentRequests 获取最近的请求记录
-func (s *SQLiteStorage) GetRecentRequests(limit int) ([]*common.Request, error) {
-	rows, err := s.db.Query(`
-		SELECT id, user_id, model, prompt, response, tokens_in, tokens_out,
-			latency_ms, status, error, timestamp, server, source
+		SELECT id, model, prompt, response, tokens_in, tokens_out, latency_ms, timestamp
 		FROM requests
 		ORDER BY timestamp DESC
 		LIMIT ?
 	`, limit)
 	if err != nil {
-		return nil, fmt.Errorf("查询最近请求失败: %v", err)
+		return nil, err
 	}
 	defer rows.Close()
 
-	var requests []*common.Request
+	var requests []*types.Request
 	for rows.Next() {
-		var req common.Request
-		err := rows.Scan(&req.ID, &req.UserID, &req.Model, &req.Prompt,
-			&req.Response, &req.TokensIn, &req.TokensOut, &req.LatencyMs,
-			&req.Status, &req.Error, &req.Timestamp, &req.Server,
-			&req.Source)
+		var req types.Request
+		err := rows.Scan(
+			&req.ID,
+			&req.Model,
+			&req.Prompt,
+			&req.Response,
+			&req.TokensIn,
+			&req.TokensOut,
+			&req.LatencyMs,
+			&req.Timestamp,
+		)
 		if err != nil {
-			return nil, fmt.Errorf("扫描请求记录失败: %v", err)
+			return nil, err
 		}
 		requests = append(requests, &req)
 	}
 	return requests, nil
 }
 
-// GetRequests 获取指定用户的所有请求
-func (s *SQLiteStorage) GetRequests(userID string) ([]*common.Request, error) {
+// DeleteRequest deletes a request by ID
+func (s *SQLiteStorage) DeleteRequest(id string) error {
+	_, err := s.db.Exec("DELETE FROM requests WHERE id = ?", id)
+	return err
+}
+
+// SaveModelStats saves model statistics to the database
+func (s *SQLiteStorage) SaveModelStats(model string, stats *types.ModelStats) error {
+	_, err := s.db.Exec(`
+		INSERT OR REPLACE INTO model_stats (
+			model, total_requests, failed_requests, total_tokens_in, total_tokens_out, average_latency, last_used
+		) VALUES (?, ?, ?, ?, ?, ?, ?)
+	`,
+		model,
+		stats.TotalRequests,
+		stats.FailedRequests,
+		stats.TotalTokensIn,
+		stats.TotalTokensOut,
+		stats.AverageLatency,
+		stats.LastUsed,
+	)
+	return err
+}
+
+// GetModelStats retrieves model statistics from the database
+func (s *SQLiteStorage) GetModelStats(model string) (*types.ModelStats, error) {
+	var stats types.ModelStats
+	err := s.db.QueryRow(`
+		SELECT total_requests, failed_requests, total_tokens_in, total_tokens_out, average_latency, last_used 
+		FROM model_stats 
+		WHERE model = ?
+	`, model).Scan(
+		&stats.TotalRequests,
+		&stats.FailedRequests,
+		&stats.TotalTokensIn,
+		&stats.TotalTokensOut,
+		&stats.AverageLatency,
+		&stats.LastUsed,
+	)
+	if err == sql.ErrNoRows {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, err
+	}
+	return &stats, nil
+}
+
+// GetAllModelStats retrieves statistics for all models
+func (s *SQLiteStorage) GetAllModelStats() (map[string]*types.ModelStats, error) {
+	rows, err := s.db.Query("SELECT model, total_requests, failed_requests, total_tokens_in, total_tokens_out, average_latency, last_used FROM model_stats")
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	stats := make(map[string]*types.ModelStats)
+	for rows.Next() {
+		var stat types.ModelStats
+		var model string
+		err := rows.Scan(&model, &stat.TotalRequests, &stat.FailedRequests, &stat.TotalTokensIn, &stat.TotalTokensOut, &stat.AverageLatency, &stat.LastUsed)
+		if err != nil {
+			return nil, err
+		}
+		stats[model] = &stat
+	}
+	return stats, nil
+}
+
+// ListModelStats retrieves all model statistics
+func (s *SQLiteStorage) ListModelStats() (map[string]*types.ModelStats, error) {
 	rows, err := s.db.Query(`
-		SELECT id, model, prompt, response, tokens_in, tokens_out,
-			latency_ms, status, error, timestamp, server, source
+		SELECT model, total_requests, failed_requests, total_tokens_in, total_tokens_out, average_latency, last_used
+		FROM model_stats
+	`)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	stats := make(map[string]*types.ModelStats)
+	for rows.Next() {
+		var stat types.ModelStats
+		var model string
+		err := rows.Scan(&model, &stat.TotalRequests, &stat.FailedRequests, &stat.TotalTokensIn, &stat.TotalTokensOut, &stat.AverageLatency, &stat.LastUsed)
+		if err != nil {
+			return nil, err
+		}
+		stats[model] = &stat
+	}
+	return stats, nil
+}
+
+// DeleteModelStats deletes model statistics
+func (s *SQLiteStorage) DeleteModelStats(model string) error {
+	_, err := s.db.Exec("DELETE FROM model_stats WHERE model = ?", model)
+	return err
+}
+
+// SaveModelStatsHistory saves model statistics history
+func (s *SQLiteStorage) SaveModelStatsHistory(history *types.ModelStatsHistory) error {
+	_, err := s.db.Exec(`
+		INSERT INTO model_stats_history (
+			id, model, total_requests, failed_requests, total_tokens_in, total_tokens_out, average_latency, timestamp
+		) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+	`,
+		history.ID,
+		history.Model,
+		history.TotalRequests,
+		history.FailedRequests,
+		history.TotalTokensIn,
+		history.TotalTokensOut,
+		history.AverageLatency,
+		history.Timestamp,
+	)
+	return err
+}
+
+// GetModelStatsHistory retrieves model statistics history
+func (s *SQLiteStorage) GetModelStatsHistory(model string, limit int) ([]*types.ModelStatsHistory, error) {
+	rows, err := s.db.Query(`
+		SELECT id, model, total_requests, failed_requests, total_tokens_in, total_tokens_out, average_latency, timestamp
+		FROM model_stats_history
+		WHERE model = ?
+		ORDER BY timestamp DESC
+		LIMIT ?
+	`, model, limit)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var history []*types.ModelStatsHistory
+	for rows.Next() {
+		var h types.ModelStatsHistory
+		err := rows.Scan(
+			&h.ID,
+			&h.Model,
+			&h.TotalRequests,
+			&h.FailedRequests,
+			&h.TotalTokensIn,
+			&h.TotalTokensOut,
+			&h.AverageLatency,
+			&h.Timestamp,
+		)
+		if err != nil {
+			return nil, err
+		}
+		history = append(history, &h)
+	}
+	return history, nil
+}
+
+// ListModelStatsHistory retrieves all model statistics history
+func (s *SQLiteStorage) ListModelStatsHistory(limit int) ([]*types.ModelStatsHistory, error) {
+	rows, err := s.db.Query(`
+		SELECT id, model, total_requests, failed_requests, total_tokens_in, total_tokens_out, average_latency, timestamp
+		FROM model_stats_history
+		ORDER BY timestamp DESC
+		LIMIT ?
+	`, limit)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var history []*types.ModelStatsHistory
+	for rows.Next() {
+		var h types.ModelStatsHistory
+		err := rows.Scan(
+			&h.ID,
+			&h.Model,
+			&h.TotalRequests,
+			&h.FailedRequests,
+			&h.TotalTokensIn,
+			&h.TotalTokensOut,
+			&h.AverageLatency,
+			&h.Timestamp,
+		)
+		if err != nil {
+			return nil, err
+		}
+		history = append(history, &h)
+	}
+	return history, nil
+}
+
+// DeleteModelStatsHistory deletes model statistics history
+func (s *SQLiteStorage) DeleteModelStatsHistory(model string) error {
+	_, err := s.db.Exec("DELETE FROM model_stats_history WHERE model = ?", model)
+	return err
+}
+
+// Cleanup removes old data
+func (s *SQLiteStorage) Cleanup() error {
+	_, err := s.db.Exec(`
+		DELETE FROM model_stats_history
+		WHERE timestamp < datetime('now', '-30 days')
+	`)
+	return err
+}
+
+// NewHistoryManager creates a new history manager
+func (s *SQLiteStorage) NewHistoryManager(size int) types.HistoryManager {
+	return NewHistoryManager(s, size)
+}
+
+// Close closes the database connection
+func (s *SQLiteStorage) Close() error {
+	return s.db.Close()
+}
+
+// initDB initializes the database
+func (s *SQLiteStorage) initDB() error {
+	_, err := s.db.Exec(`
+		CREATE TABLE IF NOT EXISTS requests (
+			id TEXT PRIMARY KEY,
+			user_id TEXT NOT NULL,
+			model TEXT NOT NULL,
+			prompt TEXT NOT NULL,
+			response TEXT NOT NULL,
+			tokens_in INTEGER NOT NULL,
+			tokens_out INTEGER NOT NULL,
+			server TEXT NOT NULL,
+			latency_ms REAL NOT NULL,
+			status INTEGER NOT NULL,
+			error TEXT,
+			timestamp DATETIME NOT NULL,
+			source TEXT NOT NULL
+		);
+
+		CREATE TABLE IF NOT EXISTS model_stats (
+			model TEXT PRIMARY KEY,
+			total_requests INTEGER NOT NULL DEFAULT 0,
+			failed_requests INTEGER NOT NULL DEFAULT 0,
+			total_tokens_in INTEGER NOT NULL DEFAULT 0,
+			total_tokens_out INTEGER NOT NULL DEFAULT 0,
+			average_latency REAL NOT NULL DEFAULT 0,
+			last_used DATETIME NOT NULL
+		);
+
+		CREATE TABLE IF NOT EXISTS model_stats_history (
+			id TEXT PRIMARY KEY,
+			model TEXT NOT NULL,
+			total_requests INTEGER NOT NULL,
+			failed_requests INTEGER NOT NULL,
+			total_tokens_in INTEGER NOT NULL,
+			total_tokens_out INTEGER NOT NULL,
+			average_latency REAL NOT NULL,
+			timestamp DATETIME NOT NULL
+		);
+	`)
+	return err
+}
+
+// GetAllRequests retrieves all requests
+func (s *SQLiteStorage) GetAllRequests() ([]*types.Request, error) {
+	rows, err := s.db.Query(`
+		SELECT id, user_id, model, prompt, response, tokens_in, tokens_out, server, latency_ms, status, error, timestamp, source
+		FROM requests
+		ORDER BY timestamp DESC
+	`)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var requests []*types.Request
+	for rows.Next() {
+		var req types.Request
+		err := rows.Scan(
+			&req.ID,
+			&req.UserID,
+			&req.Model,
+			&req.Prompt,
+			&req.Response,
+			&req.TokensIn,
+			&req.TokensOut,
+			&req.Server,
+			&req.LatencyMs,
+			&req.Status,
+			&req.Error,
+			&req.Timestamp,
+			&req.Source,
+		)
+		if err != nil {
+			return nil, err
+		}
+		requests = append(requests, &req)
+	}
+	return requests, nil
+}
+
+// GetRecentRequests retrieves the most recent requests
+func (s *SQLiteStorage) GetRecentRequests(limit int) ([]*types.Request, error) {
+	return s.ListRequests(limit)
+}
+
+// GetRequestByID retrieves a specific request by ID
+func (s *SQLiteStorage) GetRequestByID(requestID string) (*types.Request, error) {
+	return s.GetRequest(requestID)
+}
+
+// GetRequests retrieves all requests for a specific user
+func (s *SQLiteStorage) GetRequests(userID string) ([]*types.Request, error) {
+	rows, err := s.db.Query(`
+		SELECT id, user_id, model, prompt, response, tokens_in, tokens_out, server, latency_ms, status, error, timestamp, source
 		FROM requests
 		WHERE user_id = ?
 		ORDER BY timestamp DESC
 	`, userID)
 	if err != nil {
-		return nil, fmt.Errorf("查询用户请求失败: %v", err)
+		return nil, err
 	}
 	defer rows.Close()
 
-	var requests []*common.Request
+	var requests []*types.Request
 	for rows.Next() {
-		var req common.Request
-		err := rows.Scan(&req.ID, &req.Model, &req.Prompt, &req.Response,
-			&req.TokensIn, &req.TokensOut, &req.LatencyMs, &req.Status,
-			&req.Error, &req.Timestamp, &req.Server, &req.Source)
+		var req types.Request
+		err := rows.Scan(
+			&req.ID,
+			&req.UserID,
+			&req.Model,
+			&req.Prompt,
+			&req.Response,
+			&req.TokensIn,
+			&req.TokensOut,
+			&req.Server,
+			&req.LatencyMs,
+			&req.Status,
+			&req.Error,
+			&req.Timestamp,
+			&req.Source,
+		)
 		if err != nil {
-			return nil, fmt.Errorf("扫描请求记录失败: %v", err)
-		}
-		req.UserID = userID
-		requests = append(requests, &req)
-	}
-	return requests, nil
-}
-
-// GetAllRequests 获取所有请求
-func (s *SQLiteStorage) GetAllRequests() ([]*common.Request, error) {
-	rows, err := s.db.Query(`
-		SELECT id, user_id, model, prompt, response, tokens_in, tokens_out,
-			latency_ms, status, error, timestamp, server, source
-		FROM requests
-		ORDER BY timestamp DESC
-	`)
-	if err != nil {
-		return nil, fmt.Errorf("查询所有请求失败: %v", err)
-	}
-	defer rows.Close()
-
-	var requests []*common.Request
-	for rows.Next() {
-		var req common.Request
-		err := rows.Scan(&req.ID, &req.UserID, &req.Model, &req.Prompt,
-			&req.Response, &req.TokensIn, &req.TokensOut, &req.LatencyMs,
-			&req.Status, &req.Error, &req.Timestamp, &req.Server,
-			&req.Source)
-		if err != nil {
-			return nil, fmt.Errorf("扫描请求记录失败: %v", err)
+			return nil, err
 		}
 		requests = append(requests, &req)
 	}
 	return requests, nil
-}
-
-// GetRequestByID 根据ID获取请求
-func (s *SQLiteStorage) GetRequestByID(requestID string) (*common.Request, error) {
-	var req common.Request
-	err := s.db.QueryRow(`
-		SELECT id, user_id, model, prompt, response, tokens_in, tokens_out,
-			latency_ms, status, error, timestamp, server, source
-		FROM requests
-		WHERE id = ?
-	`, requestID).Scan(&req.ID, &req.UserID, &req.Model, &req.Prompt,
-		&req.Response, &req.TokensIn, &req.TokensOut, &req.LatencyMs,
-		&req.Status, &req.Error, &req.Timestamp, &req.Server,
-		&req.Source)
-	if err == sql.ErrNoRows {
-		return nil, fmt.Errorf("请求未找到")
-	}
-	if err != nil {
-		return nil, fmt.Errorf("查询请求失败: %v", err)
-	}
-	return &req, nil
-}
-
-// DeleteRequest 删除请求
-func (s *SQLiteStorage) DeleteRequest(requestID string) error {
-	// 开始事务
-	tx, err := s.db.Begin()
-	if err != nil {
-		return fmt.Errorf("开始事务失败: %v", err)
-	}
-	defer tx.Rollback()
-
-	// 获取请求信息
-	var req common.Request
-	err = tx.QueryRow(`
-		SELECT model, tokens_in, tokens_out, latency_ms, status
-		FROM requests
-		WHERE id = ?
-	`, requestID).Scan(&req.Model, &req.TokensIn, &req.TokensOut,
-		&req.LatencyMs, &req.Status)
-	if err == sql.ErrNoRows {
-		return fmt.Errorf("请求未找到")
-	}
-	if err != nil {
-		return fmt.Errorf("查询请求失败: %v", err)
-	}
-
-	// 删除请求记录
-	_, err = tx.Exec("DELETE FROM requests WHERE id = ?", requestID)
-	if err != nil {
-		return fmt.Errorf("删除请求记录失败: %v", err)
-	}
-
-	// 更新模型统计
-	_, err = tx.Exec(`
-		UPDATE model_stats SET
-			total_requests = total_requests - 1,
-			total_tokens_in = total_tokens_in - ?,
-			total_tokens_out = total_tokens_out - ?,
-			average_latency = average_latency - ?,
-			failed_requests = failed_requests - ?
-		WHERE model = ?
-	`, req.TokensIn, req.TokensOut, req.LatencyMs, req.Status, req.Model)
-	if err != nil {
-		return fmt.Errorf("更新模型统计失败: %v", err)
-	}
-
-	// 提交事务
-	if err := tx.Commit(); err != nil {
-		return fmt.Errorf("提交事务失败: %v", err)
-	}
-
-	return nil
-}
-
-// Close 关闭存储连接
-func (s *SQLiteStorage) Close() error {
-	return s.db.Close()
-}
-
-// NewHistoryManager 创建一个新的历史记录管理器
-func (s *SQLiteStorage) NewHistoryManager(size int) types.HistoryManager {
-	return NewHistoryManager(s, size)
 }
