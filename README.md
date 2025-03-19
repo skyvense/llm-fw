@@ -13,7 +13,9 @@ LLM Forwarder Framework 是一个用于转发和管理 LLM（大型语言模型�
 
 ## 配置说明
 
-配置文件为 `config.yaml`，支持以下配置项：
+### 基础配置
+
+在项目根目录创建 `config.yaml` 文件：
 
 ```yaml
 server:
@@ -25,12 +27,12 @@ ollama:
 
 storage:
   type: "sqlite"    # 存储类型：sqlite 或 file
-  path: "data/llm-fw.db"  # 存储路径
+  path: "data/llm-fw.db"  # SQLite 数据库文件路径
 ```
 
 ### 存储配置
 
-框架支持两种存储方式：
+框架支持两种存储方式，推荐使用 SQLite：
 
 1. SQLite 存储（推荐）：
    ```yaml
