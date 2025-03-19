@@ -8,11 +8,11 @@ import (
 	"github.com/gin-gonic/gin"
 
 	"llm-fw/handlers"
-	"llm-fw/interfaces"
+	"llm-fw/types"
 )
 
 // SetupRouter 设置路由器
-func SetupRouter(ollamaURL string, storage interfaces.Storage, metricsCollector interfaces.MetricsCollector) (*gin.Engine, error) {
+func SetupRouter(ollamaURL string, storage types.Storage, metricsCollector types.MetricsCollector) (*gin.Engine, error) {
 	log.Printf("Setting up router with Ollama URL: %s", ollamaURL)
 	router := gin.Default()
 
@@ -22,18 +22,14 @@ func SetupRouter(ollamaURL string, storage interfaces.Storage, metricsCollector 
 
 	// 创建模型处理器
 	log.Printf("Initializing model handler...")
-	modelHandler, err := handlers.NewModelHandler(ollamaURL, metricsCollector)
-	if err != nil {
-		log.Printf("Failed to initialize model handler: %v", err)
-		return nil, err
-	}
+	modelHandler := handlers.NewModelHandler(ollamaURL, storage, metricsCollector)
 	log.Printf("Model handler initialized successfully")
 
 	// 创建生成处理器
 	generateHandler := handlers.NewGenerateHandler(ollamaURL, storage, metricsCollector)
 
 	// 创建聊天处理器
-	chatHandler := handlers.NewChatHandler(ollamaURL, storage, metricsCollector)
+	chatHandler := handlers.NewChatHandler(storage, ollamaURL, metricsCollector)
 
 	// 设置 Ollama 代理
 	ollamaTarget, err := url.Parse(ollamaURL)
