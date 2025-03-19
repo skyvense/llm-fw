@@ -1,79 +1,47 @@
 package main
 
 import (
-	"context"
 	"fmt"
 	"log"
-	"net/http"
-	"os"
-	"os/signal"
-	"syscall"
-	"time"
 
 	"llm-fw/config"
+	"llm-fw/metrics"
 	"llm-fw/routes"
 	"llm-fw/storage"
-	"llm-fw/types"
 )
 
 func main() {
-	// Load configuration
-	cfg, err := config.LoadConfig("config.yaml")
-	if err != nil {
-		log.Fatalf("Failed to load config: %v", err)
+	// 初始化配置
+	cfg := config.NewConfig()
+
+	// 尝试加载配置文件
+	if loadedCfg, err := config.LoadConfig("config.yaml"); err == nil {
+		cfg = loadedCfg
+		log.Println("已加载配置文件 config.yaml")
+	} else {
+		log.Printf("未找到配置文件，使用默认配置: %v", err)
 	}
 
-	// Initialize storage
-	var store types.Storage
-	switch cfg.Storage.Type {
-	case "file":
-		store, err = storage.NewFileStorageImpl(cfg.Storage.Path)
-	case "sqlite":
-		store, err = storage.NewSQLiteStorage(cfg.Storage.Path)
-	default:
-		log.Fatalf("Unsupported storage type: %s", cfg.Storage.Type)
-	}
+	// 初始化存储
+	store, err := storage.NewStorage(cfg)
 	if err != nil {
-		log.Fatalf("Failed to initialize storage: %v", err)
+		log.Fatalf("初始化存储失败: %v", err)
 	}
 	defer store.Close()
 
-	// Initialize metrics collector
-	metricsCollector := &types.NoopMetricsCollector{}
+	// 初始化指标收集器
+	metricsCollector := metrics.NewMetrics(store)
 
-	// Create router
+	// 设置路由
 	router, err := routes.SetupRouter(cfg.Ollama.URL, store, metricsCollector)
 	if err != nil {
-		log.Fatalf("Failed to setup router: %v", err)
+		log.Fatalf("设置路由失败: %v", err)
 	}
 
-	// Create server
-	srv := &http.Server{
-		Addr:    fmt.Sprintf("%s:%d", cfg.Server.Host, cfg.Server.Port),
-		Handler: router,
+	// 启动服务器
+	addr := fmt.Sprintf("%s:%d", cfg.Server.Host, cfg.Server.Port)
+	log.Printf("服务器启动在 %s", addr)
+	if err := router.Run(addr); err != nil {
+		log.Fatalf("服务器启动失败: %v", err)
 	}
-
-	// Start server
-	go func() {
-		log.Printf("Server starting on %s:%d", cfg.Server.Host, cfg.Server.Port)
-		if err := srv.ListenAndServe(); err != nil && err != http.ErrServerClosed {
-			log.Fatalf("Failed to start server: %v", err)
-		}
-	}()
-
-	// Wait for interrupt signal
-	quit := make(chan os.Signal, 1)
-	signal.Notify(quit, syscall.SIGINT, syscall.SIGTERM)
-	<-quit
-
-	// Graceful shutdown
-	log.Println("Shutting down server...")
-	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-	defer cancel()
-
-	if err := srv.Shutdown(ctx); err != nil {
-		log.Fatalf("Server forced to shutdown: %v", err)
-	}
-
-	log.Println("Server exiting")
 }

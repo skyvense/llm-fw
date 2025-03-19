@@ -170,6 +170,7 @@ func (h *ModelHandler) ListModels(w http.ResponseWriter, r *http.Request) {
 
 	// 首先添加有统计信息的模型
 	for modelName, stats := range modelStats {
+		// 如果是 stats_only 模式，只添加有请求记录的模型
 		if statsOnly && stats.TotalRequests == 0 {
 			continue
 		}

@@ -1,11 +1,19 @@
 package metrics
 
 import (
+	"log"
 	"sync"
 	"time"
 
 	"llm-fw/types"
 )
+
+// ModelStatsStorage 定义了存储模型统计信息的接口
+type ModelStatsStorage interface {
+	SaveModelStats(model string, stats *types.ModelStats) error
+	GetModelStats(model string) (*types.ModelStats, error)
+	GetAllModelStats() (map[string]*types.ModelStats, error)
+}
 
 // Metrics 管理所有指标
 type Metrics struct {
@@ -16,14 +24,27 @@ type Metrics struct {
 	totalTokensIn  int64
 	totalTokensOut int64
 	failedRequests int64
+	storage        ModelStatsStorage
 }
 
 // NewMetrics 创建一个新的指标收集器
-func NewMetrics() *Metrics {
-	return &Metrics{
+func NewMetrics(storage ModelStatsStorage) *Metrics {
+	m := &Metrics{
 		ModelStats:   make(map[string]*types.ModelStats),
 		serverHealth: make(map[string]bool),
+		storage:      storage,
 	}
+
+	// 从存储中加载统计信息
+	if storage != nil {
+		if stats, err := storage.GetAllModelStats(); err == nil {
+			m.ModelStats = stats
+		} else {
+			log.Printf("Failed to load model stats from storage: %v", err)
+		}
+	}
+
+	return m
 }
 
 // RecordRequest 记录一个请求的统计信息
@@ -67,6 +88,13 @@ func (m *Metrics) RecordRequest(model, server string, tokensIn, tokensOut int64,
 	if !isSuccess {
 		m.failedRequests++
 	}
+
+	// 保存统计信息到存储
+	if m.storage != nil {
+		if err := m.storage.SaveModelStats(model, stats); err != nil {
+			log.Printf("Failed to save model stats: %v", err)
+		}
+	}
 }
 
 // GetMetrics 获取所有指标
@@ -107,9 +135,12 @@ func (m *Metrics) GetAllModelStats() map[string]*types.ModelStats {
 	m.mu.RLock()
 	defer m.mu.RUnlock()
 
+	// 从内存中获取最新的统计信息
 	stats := make(map[string]*types.ModelStats)
 	for model, modelStats := range m.ModelStats {
-		stats[model] = modelStats
+		// 创建一个新的副本以避免并发问题
+		statsCopy := *modelStats
+		stats[model] = &statsCopy
 	}
 	return stats
 }

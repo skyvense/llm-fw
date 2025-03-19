@@ -29,7 +29,7 @@ func SetupRouter(ollamaURL string, storage types.Storage, metricsCollector types
 	generateHandler := handlers.NewGenerateHandler(ollamaURL, storage, metricsCollector)
 
 	// 创建聊天处理器
-	chatHandler := handlers.NewChatHandler(storage, ollamaURL)
+	chatHandler := handlers.NewChatHandler(storage, ollamaURL, metricsCollector)
 
 	// 设置 Ollama 代理
 	ollamaTarget, err := url.Parse(ollamaURL)

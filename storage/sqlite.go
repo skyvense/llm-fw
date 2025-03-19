@@ -7,7 +7,7 @@ import (
 
 	"llm-fw/types"
 
-	_ "github.com/mattn/go-sqlite3"
+	_ "modernc.org/sqlite"
 )
 
 // Request represents a generation request
@@ -24,7 +24,7 @@ type SQLiteStorage struct {
 
 // NewSQLiteStorage creates a new SQLite storage instance
 func NewSQLiteStorage(dbPath string) (*SQLiteStorage, error) {
-	db, err := sql.Open("sqlite3", dbPath)
+	db, err := sql.Open("sqlite", dbPath)
 	if err != nil {
 		return nil, fmt.Errorf("failed to open database: %v", err)
 	}
@@ -155,8 +155,8 @@ func (s *SQLiteStorage) SaveModelStats(model string, stats *types.ModelStats) er
 func (s *SQLiteStorage) GetModelStats(model string) (*types.ModelStats, error) {
 	var stats types.ModelStats
 	err := s.db.QueryRow(`
-		SELECT total_requests, failed_requests, total_tokens_in, total_tokens_out, average_latency, last_used 
-		FROM model_stats 
+		SELECT total_requests, failed_requests, total_tokens_in, total_tokens_out, average_latency, last_used
+		FROM model_stats
 		WHERE model = ?
 	`, model).Scan(
 		&stats.TotalRequests,
@@ -177,7 +177,10 @@ func (s *SQLiteStorage) GetModelStats(model string) (*types.ModelStats, error) {
 
 // GetAllModelStats retrieves statistics for all models
 func (s *SQLiteStorage) GetAllModelStats() (map[string]*types.ModelStats, error) {
-	rows, err := s.db.Query("SELECT model, total_requests, failed_requests, total_tokens_in, total_tokens_out, average_latency, last_used FROM model_stats")
+	rows, err := s.db.Query(`
+		SELECT model, total_requests, failed_requests, total_tokens_in, total_tokens_out, average_latency, last_used
+		FROM model_stats
+	`)
 	if err != nil {
 		return nil, err
 	}

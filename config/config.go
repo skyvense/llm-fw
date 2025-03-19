@@ -1,6 +1,7 @@
 package config
 
 import (
+	"fmt"
 	"os"
 	"strconv"
 
@@ -86,6 +87,16 @@ func LoadConfig(path string) (*Config, error) {
 	var cfg Config
 	if err := yaml.Unmarshal(data, &cfg); err != nil {
 		return nil, err
+	}
+
+	// 规范化存储类型
+	switch cfg.Storage.Type {
+	case "file":
+		cfg.Storage.Type = StorageTypeFile
+	case "sqlite":
+		cfg.Storage.Type = StorageTypeSQLite
+	default:
+		return nil, fmt.Errorf("unsupported storage type: %s", cfg.Storage.Type)
 	}
 
 	return &cfg, nil

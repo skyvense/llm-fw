@@ -44,12 +44,12 @@ type ChatHandler struct {
 }
 
 // NewChatHandler creates a new chat handler
-func NewChatHandler(storage types.Storage, ollamaURL string) *ChatHandler {
+func NewChatHandler(storage types.Storage, ollamaURL string, metricsCollector types.MetricsCollector) *ChatHandler {
 	return &ChatHandler{
 		Storage:          storage,
 		ollamaURL:        ollamaURL,
 		TargetURL:        ollamaURL,
-		MetricsCollector: &types.NoopMetricsCollector{},
+		MetricsCollector: metricsCollector,
 	}
 }
 
