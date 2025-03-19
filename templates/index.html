@@ -5,6 +5,8 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>LLM Forwarder Framework</title>
     <link href="https://cdn.jsdelivr.net/npm/tailwindcss@2.2.19/dist/tailwind.min.css" rel="stylesheet">
+    <!-- 添加 Heroicons -->
+    <script src="https://unpkg.com/@heroicons/react@2.0.18/24/outline"></script>
 </head>
 <body class="bg-gray-100">
     <div class="container mx-auto px-4 py-8">
@@ -24,9 +26,16 @@
         <div class="flex flex-col md:flex-row gap-8">
             <!-- Left Column -->
             <div class="md:w-2/3">
-                <!-- Model List -->
+                <!-- Models -->
                 <div class="bg-white rounded-lg shadow p-6 mb-8">
-                    <h2 class="text-xl font-semibold mb-4" data-i18n="available-models">Available Models</h2>
+                    <div class="flex justify-between items-center mb-4">
+                        <h2 class="text-xl font-semibold" data-i18n="available-models">Models</h2>
+                        <button onclick="fetchModels()" class="p-2 text-gray-600 hover:text-gray-900 rounded-full hover:bg-gray-100" title="Refresh">
+                            <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" viewBox="0 0 20 20" fill="currentColor">
+                                <path fill-rule="evenodd" d="M4 2a1 1 0 011 1v2.101a7.002 7.002 0 0111.601 2.566 1 1 0 11-1.885.666A5.002 5.002 0 005.999 7H9a1 1 0 010 2H4a1 1 0 01-1-1V3a1 1 0 011-1zm.008 9.057a1 1 0 011.276.61A5.002 5.002 0 0014.001 13H11a1 1 0 110-2h5a1 1 0 011 1v5a1 1 0 11-2 0v-2.101a7.002 7.002 0 01-11.601-2.566 1 1 0 01.61-1.276z" clip-rule="evenodd" />
+                            </svg>
+                        </button>
+                    </div>
                     <div id="modelList" class="space-y-4">
                         <!-- Model list will be loaded dynamically via JavaScript -->
                     </div>
@@ -34,7 +43,14 @@
 
                 <!-- Request History -->
                 <div class="bg-white rounded-lg shadow p-6">
-                    <h2 class="text-xl font-semibold mb-4" data-i18n="request-history">Request History</h2>
+                    <div class="flex justify-between items-center mb-4">
+                        <h2 class="text-xl font-semibold" data-i18n="request-history">Request History</h2>
+                        <button onclick="fetchRequestHistory()" class="p-2 text-gray-600 hover:text-gray-900 rounded-full hover:bg-gray-100" title="Refresh">
+                            <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" viewBox="0 0 20 20" fill="currentColor">
+                                <path fill-rule="evenodd" d="M4 2a1 1 0 011 1v2.101a7.002 7.002 0 0111.601 2.566 1 1 0 11-1.885.666A5.002 5.002 0 005.999 7H9a1 1 0 010 2H4a1 1 0 01-1-1V3a1 1 0 011-1zm.008 9.057a1 1 0 011.276.61A5.002 5.002 0 0014.001 13H11a1 1 0 110-2h5a1 1 0 011 1v5a1 1 0 11-2 0v-2.101a7.002 7.002 0 01-11.601-2.566 1 1 0 01.61-1.276z" clip-rule="evenodd" />
+                            </svg>
+                        </button>
+                    </div>
                     <div id="requestHistory" class="space-y-4">
                         <!-- Request history will be added here -->
                     </div>
@@ -102,7 +118,9 @@
                 "model-online": "Online",
                 "model-offline": "Offline",
                 "model-loading": "Loading...",
-                "last-updated": "Last updated"
+                "last-updated": "Last updated",
+                "model-history": "Model History",
+                "no-history": "No history available"
             },
             zh: {
                 "note": "注意：本项目所有代码均由 Claude 3.5 Sonnet 人工智能生成",
@@ -134,7 +152,9 @@
                 "model-online": "在线",
                 "model-offline": "离线",
                 "model-loading": "加载中...",
-                "last-updated": "最后更新"
+                "last-updated": "最后更新",
+                "model-history": "模型历史",
+                "no-history": "没有历史记录"
             }
         };
 
@@ -232,24 +252,25 @@
         // Fetch model list and start auto-update
         async function fetchModels() {
             try {
-                const response = await fetch('/api/models?stats_only=true');
-                if (!response.ok) {
-                    const errorData = await response.json();
+                // 获取模型列表
+                const modelsResponse = await fetch('/api/models?stats_only=true');
+                if (!modelsResponse.ok) {
+                    const errorData = await modelsResponse.json();
                     throw new Error(errorData.error || 'Failed to fetch models');
                 }
                 
-                const data = await response.json();
+                const modelsData = await modelsResponse.json();
                 const modelList = document.getElementById('modelList');
                 const lang = document.documentElement.lang;
                 
                 modelList.innerHTML = '';
                 
-                if (!data.models || data.models.length === 0) {
+                if (!modelsData.models || modelsData.models.length === 0) {
                     modelList.innerHTML = `<div class="p-4 border rounded-lg bg-yellow-50 text-yellow-700">${i18n[lang]["no-models"]}</div>`;
                     return;
                 }
-                
-                data.models.forEach(modelInfo => {
+
+                modelsData.models.forEach(modelInfo => {
                     // Add to model list
                     const div = document.createElement('div');
                     div.className = 'p-4 border rounded-lg';
@@ -257,6 +278,7 @@
 
                     // 获取统计信息，如果存在的话
                     const stats = modelInfo.stats || {};
+                    const history = modelInfo.history || {};
                     const lastUsed = modelInfo.last_used ? new Date(modelInfo.last_used) : null;
                     const successRate = stats.total_requests > 0 
                         ? ((stats.total_requests - stats.failed_requests) / stats.total_requests * 100).toFixed(1)
@@ -266,6 +288,7 @@
                         <div class="flex items-center justify-between">
                             <div class="flex-1">
                                 <h3 class="font-medium">${modelInfo.name}</h3>
+                                ${modelInfo.parameters ? `<p class="text-sm text-gray-500">${modelInfo.parameters}</p>` : ''}
                             </div>
                             <div class="flex items-center space-x-8 text-sm">
                                 <div class="stats-container">
@@ -287,6 +310,15 @@
                         <div class="mt-2 text-xs text-gray-400">
                             <span class="last-updated">${i18n[lang]["last-updated"]}: ${lastUsed ? lastUsed.toLocaleTimeString(lang) : '-'}</span>
                         </div>
+                        ${history.timestamp ? `
+                        <div class="mt-2 text-xs text-gray-500">
+                            <p>${i18n[lang]["total-requests"]}: ${history.total_requests || 0}</p>
+                            <p>${i18n[lang]["failed-requests"]}: ${history.failed_requests || 0}</p>
+                            <p>${i18n[lang]["tokens-in"]}: ${history.total_tokens_in || 0}</p>
+                            <p>${i18n[lang]["tokens-out"]}: ${history.total_tokens_out || 0}</p>
+                            <p>${i18n[lang]["average-latency"]}: ${(history.average_latency || 0).toFixed(1)}ms</p>
+                        </div>
+                        ` : ''}
                     `;
                     modelList.appendChild(div);
                 });

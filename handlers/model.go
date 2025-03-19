@@ -11,19 +11,19 @@ import (
 	"sync"
 	"time"
 
-	"llm-fw/api"
-	"llm-fw/interfaces"
+	"llm-fw/types"
 )
 
 // ModelInfo represents the model information with stats
 type ModelInfo struct {
-	Name        string          `json:"name"`
-	Family      string          `json:"family,omitempty"`
-	Parameters  string          `json:"parameters,omitempty"`
-	Format      string          `json:"format,omitempty"`
-	Stats       *api.ModelStats `json:"stats,omitempty"`
-	LastUsed    *time.Time      `json:"last_used,omitempty"`
-	IsAvailable bool            `json:"is_available"`
+	Name        string                   `json:"name"`
+	Family      string                   `json:"family,omitempty"`
+	Parameters  string                   `json:"parameters,omitempty"`
+	Format      string                   `json:"format,omitempty"`
+	Stats       *types.ModelStats        `json:"stats,omitempty"`
+	LastUsed    *time.Time               `json:"last_used,omitempty"`
+	IsAvailable bool                     `json:"is_available"`
+	History     *types.ModelStatsHistory `json:"history,omitempty"`
 }
 
 // OllamaModel used to parse Ollama API response
@@ -51,28 +51,29 @@ type OllamaResponse struct {
 // ModelHandler handles model-related requests
 type ModelHandler struct {
 	ollamaURL        string
-	metricsCollector interfaces.MetricsCollector
-	models           map[string]*ModelInfo
+	storage          types.Storage
+	metricsCollector types.MetricsCollector
+	models           map[string]*types.ModelInfo
 	mu               sync.RWMutex
 }
 
 // NewModelHandler creates a new model handler
-func NewModelHandler(ollamaURL string, metricsCollector interfaces.MetricsCollector) (*ModelHandler, error) {
+func NewModelHandler(ollamaURL string, storage types.Storage, metricsCollector types.MetricsCollector) *ModelHandler {
 	h := &ModelHandler{
 		ollamaURL:        ollamaURL,
+		storage:          storage,
 		metricsCollector: metricsCollector,
-		models:           make(map[string]*ModelInfo),
+		models:           make(map[string]*types.ModelInfo),
 	}
 
 	// 初始化时获取模型列表
 	if err := h.refreshModels(); err != nil {
-		return nil, fmt.Errorf("failed to initialize model list: %v", err)
+		log.Printf("Warning: failed to initialize model list: %v", err)
 	}
 
 	// 启动定期刷新
 	go h.startRefreshLoop()
-
-	return h, nil
+	return h
 }
 
 // refreshModels 从 Ollama 获取最新的模型列表
@@ -104,7 +105,7 @@ func (h *ModelHandler) refreshModels() error {
 		if _, exists := h.models[modelName]; !exists {
 			log.Printf("Found new model: %s (Family: %s, Parameters: %s)",
 				modelName, model.Details.Family, model.Details.ParameterSize)
-			h.models[modelName] = &ModelInfo{
+			h.models[modelName] = &types.ModelInfo{
 				Name:        modelName,
 				Family:      model.Details.Family,
 				Parameters:  model.Details.ParameterSize,
@@ -147,15 +148,29 @@ func (h *ModelHandler) ListModels(w http.ResponseWriter, r *http.Request) {
 	// 获取所有模型的统计信息
 	modelStats := h.metricsCollector.GetAllModelStats()
 
+	// 获取模型历史数据
+	history, err := h.storage.ListModelStatsHistory(10)
+	if err != nil {
+		log.Printf("Failed to get model history: %v", err)
+		history = []*types.ModelStatsHistory{}
+	}
+
+	// 创建模型名称到历史数据的映射
+	historyMap := make(map[string]*types.ModelStatsHistory)
+	for _, entry := range history {
+		historyMap[entry.Model] = entry
+	}
+
 	h.mu.RLock()
 	defer h.mu.RUnlock()
 
 	// 创建模型信息列表
-	models := make([]*ModelInfo, 0)
+	models := make([]*types.ModelInfo, 0)
 	seenModels := make(map[string]bool)
 
 	// 首先添加有统计信息的模型
 	for modelName, stats := range modelStats {
+		// 如果是 stats_only 模式，只添加有请求记录的模型
 		if statsOnly && stats.TotalRequests == 0 {
 			continue
 		}
@@ -165,13 +180,14 @@ func (h *ModelHandler) ListModels(w http.ResponseWriter, r *http.Request) {
 
 		modelInfo, exists := h.models[modelName]
 		if !exists {
-			modelInfo = &ModelInfo{
+			modelInfo = &types.ModelInfo{
 				Name:        modelName,
 				IsAvailable: false,
 			}
 		}
 		modelInfo.Stats = stats
 		modelInfo.LastUsed = &stats.LastUsed
+		modelInfo.History = historyMap[modelName]
 
 		models = append(models, modelInfo)
 	}
@@ -180,6 +196,10 @@ func (h *ModelHandler) ListModels(w http.ResponseWriter, r *http.Request) {
 	if !statsOnly {
 		for modelName, modelInfo := range h.models {
 			if !seenModels[modelName] {
+				// 检查是否有历史数据
+				if historyEntry, ok := historyMap[modelName]; ok {
+					modelInfo.History = historyEntry
+				}
 				models = append(models, modelInfo)
 			}
 		}
@@ -207,11 +227,53 @@ func (h *ModelHandler) ListModels(w http.ResponseWriter, r *http.Request) {
 }
 
 // getModelNames 返回所有可用模型的名称列表
-func getModelNames(stats map[string]*api.ModelStats) []string {
+func getModelNames(stats map[string]*types.ModelStats) []string {
 	var names []string
 	for name := range stats {
 		names = append(names, name)
 	}
 	sort.Strings(names)
 	return names
+}
+
+// getModelsFromOllama retrieves the list of models from Ollama
+func (h *ModelHandler) getModelsFromOllama() ([]types.ModelInfo, error) {
+	// 发送请求到 Ollama API
+	resp, err := http.Get(h.ollamaURL + "/api/tags")
+	if err != nil {
+		return nil, fmt.Errorf("failed to get models from Ollama: %v", err)
+	}
+	defer resp.Body.Close()
+
+	// 读取响应
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return nil, fmt.Errorf("failed to read response: %v", err)
+	}
+
+	// 解析响应
+	var ollamaResp OllamaResponse
+	if err := json.Unmarshal(body, &ollamaResp); err != nil {
+		return nil, fmt.Errorf("failed to parse response: %v", err)
+	}
+
+	// 转换为 ModelInfo 列表
+	var models []types.ModelInfo
+	h.mu.Lock()
+	defer h.mu.Unlock()
+
+	for _, m := range ollamaResp.Models {
+		modelInfo := types.ModelInfo{
+			Name:        m.Name,
+			Family:      m.Details.Family,
+			Parameters:  m.Details.ParameterSize,
+			Format:      m.Details.Format,
+			IsAvailable: true,
+		}
+		models = append(models, modelInfo)
+		// 更新内部模型列表
+		h.models[m.Name] = &modelInfo
+	}
+
+	return models, nil
 }

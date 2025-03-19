@@ -7,17 +7,17 @@ import (
 
 	"github.com/gin-gonic/gin"
 
-	"llm-fw/api"
-	"llm-fw/interfaces"
+	"llm-fw/common"
+	"llm-fw/types"
 )
 
 // HistoryHandler 处理历史记录相关的请求
 type HistoryHandler struct {
-	historyManager interfaces.HistoryManager
+	historyManager types.HistoryManager
 }
 
 // NewHistoryHandler 创建一个新的历史记录处理器
-func NewHistoryHandler(historyManager interfaces.HistoryManager) *HistoryHandler {
+func NewHistoryHandler(historyManager types.HistoryManager) *HistoryHandler {
 	return &HistoryHandler{
 		historyManager: historyManager,
 	}
@@ -50,11 +50,7 @@ func (h *HistoryHandler) GetHistory(c *gin.Context) {
 		}
 	}
 
-	requests, err := h.historyManager.GetHistory()
-	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to get history"})
-		return
-	}
+	requests := h.historyManager.Get()
 
 	// 确保按时间戳降序排序
 	sort.Slice(requests, func(i, j int) bool {
@@ -70,8 +66,9 @@ func (h *HistoryHandler) GetHistory(c *gin.Context) {
 }
 
 // AddEntry 添加一条历史记录
-func (h *HistoryHandler) AddEntry(entry api.Request) error {
-	return h.historyManager.AddEntry(entry)
+func (h *HistoryHandler) AddEntry(entry *common.Request) error {
+	h.historyManager.Add(entry)
+	return nil
 }
 
 // ClearHistory 清空历史记录
@@ -81,10 +78,7 @@ func (h *HistoryHandler) ClearHistory(c *gin.Context) {
 		return
 	}
 
-	if err := h.historyManager.ClearHistory(); err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to clear history"})
-		return
-	}
+	h.historyManager.Clear()
 
 	c.JSON(http.StatusOK, gin.H{"message": "History cleared successfully"})
 }
