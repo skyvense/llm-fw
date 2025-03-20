@@ -1,0 +1,311 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Chat History - LLM Framework</title>
+    <link href="https://cdn.jsdelivr.net/npm/tailwindcss@2.2.19/dist/tailwind.min.css" rel="stylesheet">
+</head>
+<body class="bg-gray-100">
+    <div class="container mx-auto px-4 py-8">
+        <div class="flex justify-between items-center mb-8">
+            <h1 class="text-2xl font-bold" data-i18n="title">Chat History</h1>
+            <div class="flex items-center space-x-4">
+                <button id="langSwitch" class="px-3 py-1 rounded border hover:bg-gray-100">
+                    <span data-i18n="switch-lang">中文</span>
+                </button>
+            </div>
+        </div>
+
+        <!-- Search Form -->
+        <div class="bg-white rounded-lg shadow p-6 mb-8">
+            <form id="searchForm" class="grid grid-cols-1 md:grid-cols-3 gap-4">
+                <div>
+                    <label class="block text-sm font-medium text-gray-700" data-i18n="model">Model</label>
+                    <select id="modelSelect" name="model" class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500">
+                        <option value="">All Models</option>
+                    </select>
+                </div>
+                <div>
+                    <label class="block text-sm font-medium text-gray-700" data-i18n="date-range">Date Range</label>
+                    <div class="flex space-x-2">
+                        <input type="date" id="startDate" name="startDate" class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500">
+                        <input type="date" id="endDate" name="endDate" class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500">
+                    </div>
+                </div>
+                <div>
+                    <label class="block text-sm font-medium text-gray-700" data-i18n="keyword">Keyword</label>
+                    <input type="text" id="keyword" name="keyword" class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500">
+                </div>
+                <div class="md:col-span-3 flex justify-end space-x-4">
+                    <button type="reset" class="px-4 py-2 border rounded-md hover:bg-gray-100" data-i18n="reset">Reset</button>
+                    <button type="submit" class="px-4 py-2 bg-indigo-600 text-white rounded-md hover:bg-indigo-700" data-i18n="search">Search</button>
+                </div>
+            </form>
+        </div>
+
+        <!-- History List -->
+        <div class="bg-white rounded-lg shadow">
+            <div class="p-6">
+                <div class="flex justify-between items-center mb-4">
+                    <h2 class="text-xl font-semibold" data-i18n="results">Results</h2>
+                    <button onclick="fetchHistory()" class="p-2 text-gray-600 hover:text-gray-900 rounded-full hover:bg-gray-100" title="Refresh">
+                        <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" viewBox="0 0 20 20" fill="currentColor">
+                            <path fill-rule="evenodd" d="M4 2a1 1 0 011 1v2.101a7.002 7.002 0 0111.601 2.566 1 1 0 11-1.885.666A5.002 5.002 0 005.999 7H9a1 1 0 010 2H4a1 1 0 01-1-1V3a1 1 0 011-1zm.008 9.057a1 1 0 011.276.61A5.002 5.002 0 0014.001 13H11a1 1 0 110-2h5a1 1 0 011 1v5a1 1 0 11-2 0v-2.101a7.002 7.002 0 01-11.601-2.566 1 1 0 01.61-1.276z" clip-rule="evenodd" />
+                        </svg>
+                    </button>
+                </div>
+                <div id="historyList" class="space-y-4">
+                    <!-- History items will be added here -->
+                </div>
+                <!-- Pagination -->
+                <div class="mt-4 flex justify-between items-center">
+                    <div class="text-sm text-gray-500" id="totalCount"></div>
+                    <div class="flex space-x-2">
+                        <button id="prevPage" class="px-3 py-1 border rounded hover:bg-gray-100" data-i18n="previous">Previous</button>
+                        <span id="currentPage" class="px-3 py-1">1</span>
+                        <button id="nextPage" class="px-3 py-1 border rounded hover:bg-gray-100" data-i18n="next">Next</button>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // 语言配置
+        const i18n = {
+            "en": {
+                "title": "Chat History",
+                "switch-lang": "中文",
+                "model": "Model",
+                "date-range": "Date Range",
+                "keyword": "Keyword",
+                "reset": "Reset",
+                "search": "Search",
+                "results": "Results",
+                "previous": "Previous",
+                "next": "Next",
+                "total-records": "Total Records: {0}",
+                "no-results": "No results found",
+                "all-models": "All Models",
+                "prompt": "Prompt",
+                "response": "Response",
+                "tokens-in": "Tokens In",
+                "tokens-out": "Tokens Out",
+                "latency": "Latency",
+                "error": "Error"
+            },
+            "zh": {
+                "title": "聊天历史",
+                "switch-lang": "English",
+                "model": "模型",
+                "date-range": "日期范围",
+                "keyword": "关键词",
+                "reset": "重置",
+                "search": "搜索",
+                "results": "搜索结果",
+                "previous": "上一页",
+                "next": "下一页",
+                "total-records": "总记录数：{0}",
+                "no-results": "暂无记录",
+                "all-models": "所有模型",
+                "prompt": "提示词",
+                "response": "回复",
+                "tokens-in": "输入Token数",
+                "tokens-out": "输出Token数",
+                "latency": "延迟",
+                "error": "错误"
+            }
+        };
+
+        let currentPage = 1;
+        const pageSize = 20;
+
+        // 设置语言
+        function setLanguage(lang) {
+            document.documentElement.lang = lang;
+            const switchBtn = document.getElementById('langSwitch');
+            switchBtn.querySelector('span').textContent = i18n[lang]["switch-lang"];
+            
+            // 更新所有带有 data-i18n 属性的元素
+            document.querySelectorAll('[data-i18n]').forEach(element => {
+                const key = element.getAttribute('data-i18n');
+                if (i18n[lang][key]) {
+                    if (element.tagName === 'INPUT' || element.tagName === 'TEXTAREA') {
+                        element.placeholder = i18n[lang][key];
+                    } else {
+                        element.textContent = i18n[lang][key];
+                    }
+                }
+            });
+
+            // 更新模型选择器的默认选项
+            const modelSelect = document.getElementById('modelSelect');
+            if (modelSelect.firstChild) {
+                modelSelect.firstChild.textContent = i18n[lang]["all-models"];
+            }
+
+            // 保存语言选择
+            localStorage.setItem('preferred-language', lang);
+        }
+
+        // 加载模型列表
+        async function loadModelList() {
+            try {
+                const response = await fetch('/api/models?stats_only=false');
+                if (!response.ok) {
+                    throw new Error('Failed to fetch models');
+                }
+                
+                const data = await response.json();
+                const modelSelect = document.getElementById('modelSelect');
+                const lang = document.documentElement.lang;
+                
+                modelSelect.innerHTML = `<option value="">${i18n[lang]["all-models"]}</option>`;
+                
+                if (data.models && data.models.length > 0) {
+                    data.models.forEach(modelInfo => {
+                        const option = document.createElement('option');
+                        option.value = modelInfo.name;
+                        option.textContent = modelInfo.name;
+                        modelSelect.appendChild(option);
+                    });
+                }
+            } catch (error) {
+                console.error('Failed to load model list:', error);
+            }
+        }
+
+        // 获取历史记录
+        async function fetchHistory() {
+            try {
+                const form = document.getElementById('searchForm');
+                const formData = new FormData(form);
+                const params = new URLSearchParams();
+
+                // 添加搜索参数
+                if (formData.get('model')) params.append('model', formData.get('model'));
+                if (formData.get('startDate')) params.append('start_date', formData.get('startDate'));
+                if (formData.get('endDate')) params.append('end_date', formData.get('endDate'));
+                if (formData.get('keyword')) params.append('keyword', formData.get('keyword'));
+                
+                // 添加分页参数
+                params.append('page', currentPage);
+                params.append('page_size', pageSize);
+
+                const response = await fetch(`/api/history/search?${params.toString()}`);
+                if (!response.ok) {
+                    throw new Error('Failed to fetch history');
+                }
+                
+                const data = await response.json();
+                const historyList = document.getElementById('historyList');
+                const lang = document.documentElement.lang;
+                
+                // 更新总记录数
+                document.getElementById('totalCount').textContent = i18n[lang]["total-records"].replace('{0}', data.total || 0);
+                
+                // 更新分页按钮状态
+                document.getElementById('prevPage').disabled = currentPage === 1;
+                document.getElementById('nextPage').disabled = (currentPage * pageSize) >= (data.total || 0);
+                document.getElementById('currentPage').textContent = currentPage;
+
+                // 清空并添加新的历史记录
+                historyList.innerHTML = '';
+                
+                if (!data.requests || data.requests.length === 0) {
+                    historyList.innerHTML = `
+                        <div class="p-4 border rounded-lg bg-yellow-50 text-yellow-700">
+                            ${i18n[lang]["no-results"]}
+                        </div>
+                    `;
+                    return;
+                }
+
+                data.requests.forEach(request => {
+                    const div = document.createElement('div');
+                    div.className = 'p-4 border rounded-lg';
+                    
+                    const timestamp = new Date(request.timestamp).toLocaleString(lang);
+                    div.innerHTML = `
+                        <div class="flex justify-between items-start">
+                            <div class="flex-1">
+                                <h3 class="font-medium text-gray-900">${request.model}</h3>
+                                <p class="text-sm text-gray-500">${timestamp}</p>
+                            </div>
+                            <div class="text-sm text-gray-500 text-right">
+                                <p>${i18n[lang]["tokens-in"]}: ${request.tokens_in}</p>
+                                <p>${i18n[lang]["tokens-out"]}: ${request.tokens_out}</p>
+                                <p>${i18n[lang]["latency"]}: ${request.latency_ms || 0}ms</p>
+                            </div>
+                        </div>
+                        <div class="mt-2">
+                            <p class="text-sm text-gray-600"><strong>${i18n[lang]["prompt"]}:</strong> ${request.prompt}</p>
+                            <p class="text-sm text-gray-600 mt-1"><strong>${i18n[lang]["response"]}:</strong> ${request.response}</p>
+                        </div>
+                    `;
+                    
+                    historyList.appendChild(div);
+                });
+            } catch (error) {
+                console.error('Failed to fetch history:', error);
+                const historyList = document.getElementById('historyList');
+                const lang = document.documentElement.lang;
+                historyList.innerHTML = `
+                    <div class="p-4 border rounded-lg bg-red-50 text-red-700">
+                        ${i18n[lang]["error"]}: ${error.message}
+                    </div>
+                `;
+            }
+        }
+
+        // 初始化
+        document.addEventListener('DOMContentLoaded', () => {
+            // 设置初始语言
+            const savedLang = localStorage.getItem('preferred-language') || 'en';
+            setLanguage(savedLang);
+            
+            // 添加语言切换事件监听器
+            document.getElementById('langSwitch').addEventListener('click', () => {
+                const currentLang = document.documentElement.lang;
+                setLanguage(currentLang === 'en' ? 'zh' : 'en');
+            });
+
+            // 设置今天的日期为结束日期的默认值
+            const today = new Date().toISOString().split('T')[0];
+            document.getElementById('endDate').value = today;
+            
+            // 设置30天前的日期为开始日期的默认值
+            const thirtyDaysAgo = new Date();
+            thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
+            document.getElementById('startDate').value = thirtyDaysAgo.toISOString().split('T')[0];
+            
+            // 加载模型列表
+            loadModelList();
+            
+            // 添加表单提交事件
+            document.getElementById('searchForm').addEventListener('submit', (e) => {
+                e.preventDefault();
+                currentPage = 1;
+                fetchHistory();
+            });
+            
+            // 添加分页事件
+            document.getElementById('prevPage').addEventListener('click', () => {
+                if (currentPage > 1) {
+                    currentPage--;
+                    fetchHistory();
+                }
+            });
+            
+            document.getElementById('nextPage').addEventListener('click', () => {
+                currentPage++;
+                fetchHistory();
+            });
+            
+            // 初始加载历史记录
+            fetchHistory();
+        });
+    </script>
+</body>
+</html> 

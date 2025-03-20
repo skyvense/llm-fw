@@ -2,8 +2,6 @@ package routes
 
 import (
 	"log"
-	"net/http/httputil"
-	"net/url"
 
 	"github.com/gin-gonic/gin"
 
@@ -31,13 +29,6 @@ func SetupRouter(ollamaURL string, storage types.Storage, metricsCollector types
 	// 创建聊天处理器
 	chatHandler := handlers.NewChatHandler(storage, ollamaURL, metricsCollector)
 
-	// 设置 Ollama 代理
-	ollamaTarget, err := url.Parse(ollamaURL)
-	if err != nil {
-		return nil, err
-	}
-	ollamaProxy := httputil.NewSingleHostReverseProxy(ollamaTarget)
-
 	// API 路由组
 	api := router.Group("/api")
 	{
@@ -50,16 +41,14 @@ func SetupRouter(ollamaURL string, storage types.Storage, metricsCollector types
 		// 模型相关路由
 		api.GET("/models", gin.WrapF(modelHandler.ListModels))
 		api.GET("/history", historyHandler.GetHistory)
-
-		// Ollama API 代理路由
-		api.Any("/tags", func(c *gin.Context) {
-			ollamaProxy.ServeHTTP(c.Writer, c.Request)
-		})
+		api.GET("/history/search", historyHandler.SearchHistory)
+		api.GET("/tags", gin.WrapF(modelHandler.GetTags)) // 使用本地缓存的模型列表提供 Ollama 兼容的接口
 	}
 
 	// 静态文件
-	router.Static("/static", "templates/static")   // 静态资源（CSS、JS等）
-	router.StaticFile("/", "templates/index.html") // 主页
+	router.Static("/static", "templates/static")                 // 静态资源（CSS、JS等）
+	router.StaticFile("/", "templates/index.html")               // 主页
+	router.StaticFile("/history.html", "templates/history.html") // 历史记录页面
 
 	log.Printf("Router setup completed")
 	return router, nil

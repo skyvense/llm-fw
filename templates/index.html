@@ -11,15 +11,12 @@
 <body class="bg-gray-100">
     <div class="container mx-auto px-4 py-8">
         <div class="flex justify-between items-center mb-8">
-            <h1 class="text-3xl font-bold">LLM Forwarder Framework</h1>
+            <h1 class="text-2xl font-bold" data-i18n="title">LLM Framework</h1>
             <div class="flex items-center space-x-4">
-                <button onclick="setLanguage('en')" class="px-3 py-1 text-sm rounded hover:bg-gray-200" id="en-btn">English</button>
-                <button onclick="setLanguage('zh')" class="px-3 py-1 text-sm rounded hover:bg-gray-200" id="zh-btn">中文</button>
+                <button id="langSwitch" class="px-3 py-1 rounded border hover:bg-gray-100">
+                    <span data-i18n="switch-lang">中文</span>
+                </button>
             </div>
-        </div>
-        
-        <div class="text-sm text-gray-500 mb-8 italic">
-            <span data-i18n="note">Note: All code in this project is AI-generated using Claude 3.5 Sonnet</span>
         </div>
 
         <!-- Main Content -->
@@ -45,11 +42,19 @@
                 <div class="bg-white rounded-lg shadow p-6">
                     <div class="flex justify-between items-center mb-4">
                         <h2 class="text-xl font-semibold" data-i18n="request-history">Request History</h2>
-                        <button onclick="fetchRequestHistory()" class="p-2 text-gray-600 hover:text-gray-900 rounded-full hover:bg-gray-100" title="Refresh">
-                            <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" viewBox="0 0 20 20" fill="currentColor">
-                                <path fill-rule="evenodd" d="M4 2a1 1 0 011 1v2.101a7.002 7.002 0 0111.601 2.566 1 1 0 11-1.885.666A5.002 5.002 0 005.999 7H9a1 1 0 010 2H4a1 1 0 01-1-1V3a1 1 0 011-1zm.008 9.057a1 1 0 011.276.61A5.002 5.002 0 0014.001 13H11a1 1 0 110-2h5a1 1 0 011 1v5a1 1 0 11-2 0v-2.101a7.002 7.002 0 01-11.601-2.566 1 1 0 01.61-1.276z" clip-rule="evenodd" />
-                            </svg>
-                        </button>
+                        <div class="flex space-x-2">
+                            <button onclick="window.open('/history.html', '_blank')" class="p-2 text-gray-600 hover:text-gray-900 rounded-full hover:bg-gray-100" title="Open History">
+                                <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" viewBox="0 0 20 20" fill="currentColor">
+                                    <path d="M11 3a1 1 0 100 2h2.586l-6.293 6.293a1 1 0 101.414 1.414L15 6.414V9a1 1 0 102 0V4a1 1 0 00-1-1h-5z" />
+                                    <path d="M5 5a2 2 0 00-2 2v8a2 2 0 002 2h8a2 2 0 002-2v-3a1 1 0 10-2 0v3H5V7h3a1 1 0 000-2H5z" />
+                                </svg>
+                            </button>
+                            <button onclick="fetchRequestHistory()" class="p-2 text-gray-600 hover:text-gray-900 rounded-full hover:bg-gray-100" title="Refresh">
+                                <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" viewBox="0 0 20 20" fill="currentColor">
+                                    <path fill-rule="evenodd" d="M4 2a1 1 0 011 1v2.101a7.002 7.002 0 0111.601 2.566 1 1 0 11-1.885.666A5.002 5.002 0 005.999 7H9a1 1 0 010 2H4a1 1 0 01-1-1V3a1 1 0 011-1zm.008 9.057a1 1 0 011.276.61A5.002 5.002 0 0014.001 13H11a1 1 0 110-2h5a1 1 0 011 1v5a1 1 0 11-2 0v-2.101a7.002 7.002 0 01-11.601-2.566 1 1 0 01.61-1.276z" clip-rule="evenodd" />
+                                </svg>
+                            </button>
+                        </div>
                     </div>
                     <div id="requestHistory" class="space-y-4">
                         <!-- Request history will be added here -->
@@ -88,81 +93,69 @@
     <script>
         // 语言配置
         const i18n = {
-            en: {
-                "note": "Note: All code in this project is AI-generated using Claude 3.5 Sonnet",
-                "available-models": "Available Models",
-                "generate-text": "Generate Text",
-                "select-model": "Select Model",
-                "prompt": "Prompt",
-                "generate": "Generate",
-                "request-history": "Request History",
-                "model-statistics": "Model Statistics",
+            "en": {
+                "title": "LLM Framework",
+                "switch-lang": "中文",
+                "models": "Models",
                 "no-models": "No models available",
-                "select-model-prompt": "Select a model",
-                "view-stats": "View Stats",
-                "total-requests": "Total Requests",
-                "total-tokens": "Total Tokens",
-                "average-latency": "Average Latency",
-                "success-rate": "Success Rate",
-                "no-stats": "No statistics available yet",
-                "error-loading-stats": "Error loading statistics",
-                "generating": "Generating...",
-                "copy": "Copy",
-                "copied": "Copied!",
-                "tokens-in": "Tokens In",
-                "tokens-out": "Tokens Out",
-                "latency": "Latency",
-                "prompt-label": "Prompt",
-                "response-label": "Response",
-                "model-status": "Status",
                 "model-online": "Online",
                 "model-offline": "Offline",
-                "model-loading": "Loading...",
-                "last-updated": "Last updated",
-                "model-history": "Model History",
-                "no-history": "No history available"
+                "total-requests": "Total Requests",
+                "tokens-in": "Tokens In",
+                "tokens-out": "Tokens Out",
+                "average-latency": "Average Latency",
+                "success-rate": "Success Rate",
+                "last-updated": "Last Updated",
+                "failed-requests": "Failed Requests",
+                "request-history": "Request History",
+                "no-history": "No request history",
+                "prompt": "Prompt",
+                "response": "Response",
+                "model": "Model",
+                "latency": "Latency",
+                "timestamp": "Time",
+                "send": "Send",
+                "clear": "Clear",
+                "error": "Error",
+                "generate-text": "Generate Text",
+                "select-model": "Select Model",
+                "generate": "Generate"
             },
-            zh: {
-                "note": "注意：本项目所有代码均由 Claude 3.5 Sonnet 人工智能生成",
-                "available-models": "可用模型",
-                "generate-text": "生成文本",
-                "select-model": "选择模型",
-                "prompt": "提示词",
-                "generate": "生成",
-                "request-history": "请求历史",
-                "model-statistics": "模型统计",
-                "no-models": "没有可用的模型",
-                "select-model-prompt": "请选择模型",
-                "view-stats": "查看统计",
-                "total-requests": "总请求数",
-                "total-tokens": "总Token数",
-                "average-latency": "平均延迟",
-                "success-rate": "成功率",
-                "no-stats": "暂无统计数据",
-                "error-loading-stats": "加载统计信息失败",
-                "generating": "生成中...",
-                "copy": "复制",
-                "copied": "已复制！",
-                "tokens-in": "输入Token数",
-                "tokens-out": "输出Token数",
-                "latency": "延迟",
-                "prompt-label": "提示词",
-                "response-label": "响应",
-                "model-status": "状态",
+            "zh": {
+                "title": "LLM 框架",
+                "switch-lang": "English",
+                "models": "模型列表",
+                "no-models": "暂无可用模型",
                 "model-online": "在线",
                 "model-offline": "离线",
-                "model-loading": "加载中...",
+                "total-requests": "总请求数",
+                "tokens-in": "输入Token数",
+                "tokens-out": "输出Token数",
+                "average-latency": "平均延迟",
+                "success-rate": "成功率",
                 "last-updated": "最后更新",
-                "model-history": "模型历史",
-                "no-history": "没有历史记录"
+                "failed-requests": "失败请求数",
+                "request-history": "请求历史",
+                "no-history": "暂无请求历史",
+                "prompt": "提示词",
+                "response": "回复",
+                "model": "模型",
+                "latency": "延迟",
+                "timestamp": "时间",
+                "send": "发送",
+                "clear": "清空",
+                "error": "错误",
+                "generate-text": "生成文本",
+                "select-model": "选择模型",
+                "generate": "生成"
             }
         };
 
         // 设置语言
         function setLanguage(lang) {
             document.documentElement.lang = lang;
-            document.getElementById('en-btn').classList.toggle('bg-gray-200', lang === 'en');
-            document.getElementById('zh-btn').classList.toggle('bg-gray-200', lang === 'zh');
+            const switchBtn = document.getElementById('langSwitch');
+            switchBtn.querySelector('span').textContent = i18n[lang]["switch-lang"];
             
             // 更新所有带有 data-i18n 属性的元素
             document.querySelectorAll('[data-i18n]').forEach(element => {
@@ -181,6 +174,7 @@
             
             // 重新加载模型列表和统计信息
             fetchModels();
+            fetchRequestHistory();
         }
 
         // 格式化时间戳
@@ -209,8 +203,8 @@
                     </div>
                 </div>
                 <div class="mt-2">
-                    <p class="text-sm text-gray-600"><strong>${i18n[lang]["prompt-label"]}:</strong> ${request.prompt}</p>
-                    <p class="text-sm text-gray-600 mt-1"><strong>${i18n[lang]["response-label"]}:</strong> ${request.response}</p>
+                    <p class="text-sm text-gray-600"><strong>${i18n[lang]["prompt"]}:</strong> ${request.prompt}</p>
+                    <p class="text-sm text-gray-600 mt-1"><strong>${i18n[lang]["response"]}:</strong> ${request.response}</p>
                 </div>
             `;
             
@@ -249,8 +243,21 @@
             }
         }
 
+        // 全局变量用于跟踪上次更新时间和定时器
+        let lastModelUpdate = 0;
+        let modelUpdateTimer = null;
+        const MODEL_UPDATE_INTERVAL = 30000; // 30秒
+        const MODEL_UPDATE_THRESHOLD = 5000;  // 5秒
+
         // Fetch model list and start auto-update
-        async function fetchModels() {
+        async function fetchModels(force = false) {
+            const now = Date.now();
+            
+            // 如果距离上次更新不到阈值时间，且不是强制更新，则跳过
+            if (!force && now - lastModelUpdate < MODEL_UPDATE_THRESHOLD) {
+                return;
+            }
+
             try {
                 // 获取模型列表
                 const modelsResponse = await fetch('/api/models?stats_only=true');
@@ -323,8 +330,14 @@
                     modelList.appendChild(div);
                 });
 
-                // Set up auto-refresh
-                setTimeout(fetchModels, 30000); // Update every 30 seconds
+                // 更新最后更新时间
+                lastModelUpdate = now;
+
+                // 设置下一次自动更新
+                if (modelUpdateTimer) {
+                    clearTimeout(modelUpdateTimer);
+                }
+                modelUpdateTimer = setTimeout(() => fetchModels(true), MODEL_UPDATE_INTERVAL);
             } catch (error) {
                 console.error('Failed to fetch model list:', error);
                 const modelList = document.getElementById('modelList');
@@ -333,8 +346,11 @@
                         Error: ${error.message}
                     </div>
                 `;
-                // Retry after error
-                setTimeout(fetchModels, 5000);
+                // 出错后5秒重试
+                if (modelUpdateTimer) {
+                    clearTimeout(modelUpdateTimer);
+                }
+                modelUpdateTimer = setTimeout(() => fetchModels(true), 5000);
             }
         }
 
@@ -351,7 +367,7 @@
                 const modelSelect = document.getElementById('modelSelect');
                 const lang = document.documentElement.lang;
                 
-                modelSelect.innerHTML = `<option value="">${i18n[lang]["select-model-prompt"]}</option>`;
+                modelSelect.innerHTML = `<option value="">请选择模型</option>`;
                 
                 if (data.models && data.models.length > 0) {
                     data.models.forEach(modelInfo => {
@@ -364,7 +380,7 @@
             } catch (error) {
                 console.error('Failed to load model selector:', error);
                 const modelSelect = document.getElementById('modelSelect');
-                modelSelect.innerHTML = `<option value="">${i18n[lang]["no-models"]}</option>`;
+                modelSelect.innerHTML = `<option value="">暂无可用模型</option>`;
             }
         }
 
@@ -376,7 +392,7 @@
             const lang = document.documentElement.lang;
             
             if (!model || !prompt) {
-                alert(i18n[lang]["select-model-prompt"]);
+                alert('请选择模型');
                 return;
             }
 
@@ -440,7 +456,7 @@
                                     latency_ms: data.stats.eval_duration ? data.stats.eval_duration * 1000 : 0,
                                     timestamp: new Date()
                                 });
-                                // 更新模型统计
+                                // 更新模型统计，但不强制立即更新
                                 fetchModels();
                             }
                         } catch (e) {
@@ -462,8 +478,14 @@
             const savedLang = localStorage.getItem('preferred-language') || 'en';
             setLanguage(savedLang);
             
+            // 添加语言切换事件监听器
+            document.getElementById('langSwitch').addEventListener('click', () => {
+                const currentLang = document.documentElement.lang;
+                setLanguage(currentLang === 'en' ? 'zh' : 'en');
+            });
+            
             // 加载模型列表、选择器和历史记录
-            fetchModels();
+            fetchModels(true); // 强制首次加载
             loadModelSelector();
             fetchRequestHistory();
 

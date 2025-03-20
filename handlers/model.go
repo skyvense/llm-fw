@@ -277,3 +277,49 @@ func (h *ModelHandler) getModelsFromOllama() ([]types.ModelInfo, error) {
 
 	return models, nil
 }
+
+// GetTags 提供兼容 Ollama API 的 /api/tags 接口
+func (h *ModelHandler) GetTags(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	h.mu.RLock()
+	defer h.mu.RUnlock()
+
+	// 转换为 Ollama API 格式
+	ollamaModels := make([]OllamaModel, 0)
+	for _, model := range h.models {
+		if !model.IsAvailable {
+			continue
+		}
+
+		ollamaModel := OllamaModel{
+			Name:        model.Name,
+			Model:       model.Name,
+			Modified_at: time.Now(), // 由于我们不跟踪修改时间，使用当前时间
+			Size:        0,          // 我们不跟踪模型大小
+			Details: struct {
+				ParentModel       string   `json:"parent_model"`
+				Format            string   `json:"format"`
+				Family            string   `json:"family"`
+				Families          []string `json:"families"`
+				ParameterSize     string   `json:"parameter_size"`
+				QuantizationLevel string   `json:"quantization_level"`
+			}{
+				Format:        model.Format,
+				Family:        model.Family,
+				Families:      []string{model.Family},
+				ParameterSize: model.Parameters,
+			},
+		}
+		ollamaModels = append(ollamaModels, ollamaModel)
+	}
+
+	// 返回响应
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(OllamaResponse{
+		Models: ollamaModels,
+	})
+}

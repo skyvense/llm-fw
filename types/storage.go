@@ -1,5 +1,9 @@
 package types
 
+import (
+	"time"
+)
+
 // Storage 定义了存储接口
 type Storage interface {
 	// SaveRequest 保存请求记录
@@ -53,4 +57,21 @@ type HistoryManager interface {
 	Add(req *Request)
 	Get() []*Request
 	Clear()
+	Search(params SearchParams) (*SearchResult, error)
+}
+
+// SearchParams 定义搜索参数
+type SearchParams struct {
+	Model     string    // 模型名称
+	StartDate time.Time // 开始日期
+	EndDate   time.Time // 结束日期
+	Keyword   string    // 关键词
+	Page      int       // 页码
+	PageSize  int       // 每页记录数
+}
+
+// SearchResult 定义搜索结果
+type SearchResult struct {
+	Requests []*Request // 请求记录
+	Total    int        // 总记录数
 }
