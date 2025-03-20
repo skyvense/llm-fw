@@ -42,12 +42,3 @@ type Metrics struct {
 	ServerHealth   map[string]bool
 	ModelStats     map[string]*ModelStats
 }
-
-// MetricsCollector 定义了指标收集器的接口
-type MetricsCollector interface {
-	RecordRequest(model, server string, tokensIn, tokensOut int64, latency int64, isSuccess bool)
-	GetMetrics() *Metrics
-	UpdateServerHealth(server string, isHealthy bool)
-	CleanupSystemStats()
-	GetAllModelStats() map[string]*ModelStats
-}

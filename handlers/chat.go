@@ -191,14 +191,15 @@ func (h *ChatHandler) Chat(c *gin.Context) {
 				}
 
 				// 更新指标
-				h.MetricsCollector.RecordRequest(
-					req.Model,
-					"ollama",
-					int64(stats.TokensIn),
-					int64(stats.TokensOut),
-					latency,
-					true,
-				)
+				h.MetricsCollector.RecordRequest(&types.Request{
+					Model:     req.Model,
+					Server:    "ollama",
+					TokensIn:  int(stats.TokensIn),
+					TokensOut: int(stats.TokensOut),
+					LatencyMs: float64(latency),
+					Status:    0,
+					Timestamp: time.Now(),
+				})
 
 				// 保存到存储
 				storageReq := &types.Request{

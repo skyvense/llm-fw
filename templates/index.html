@@ -121,7 +121,11 @@
                 "error": "Error",
                 "generate-text": "Generate Text",
                 "select-model": "Select Model",
-                "generate": "Generate"
+                "generate": "Generate",
+                "delete-stats": "Delete Statistics",
+                "confirm-delete": "Are you sure you want to delete all statistics for this model?",
+                "delete-success": "Statistics deleted successfully",
+                "delete-error": "Failed to delete statistics"
             },
             "zh": {
                 "title": "LLM 框架",
@@ -151,7 +155,11 @@
                 "error": "错误",
                 "generate-text": "生成文本",
                 "select-model": "选择模型",
-                "generate": "生成"
+                "generate": "生成",
+                "delete-stats": "删除统计数据",
+                "confirm-delete": "确定要删除该模型的所有统计数据吗？",
+                "delete-success": "统计数据删除成功",
+                "delete-error": "删除统计数据失败"
             }
         };
 
@@ -295,21 +303,17 @@
                         : '0.0';
 
                     div.innerHTML = `
-                        <div class="flex items-center justify-between">
+                        <div class="flex items-center justify-between mb-2">
                             <div class="flex-1">
                                 <h3 class="font-medium">${modelInfo.name}</h3>
                                 ${modelInfo.parameters ? `<p class="text-sm text-gray-500">${modelInfo.parameters}</p>` : ''}
                             </div>
-                            <div class="flex items-center space-x-8 text-sm">
-                                <div class="stats-container">
-                                    <div class="flex items-center space-x-4">
-                                        <span class="text-gray-500">${i18n[lang]["total-requests"]}: <span class="total-requests">${stats.total_requests || 0}</span></span>
-                                        <span class="text-gray-500">${i18n[lang]["tokens-inout"]}: <span class="tokens-inout">${stats.total_tokens_in || 0}/${stats.total_tokens_out || 0}</span></span>
-                                        <span class="text-gray-500">${i18n[lang]["average-latency"]}: <span class="average-latency">${(stats.average_latency || 0).toFixed(1)}</span>ms</span>
-                                        <span class="text-gray-500">${i18n[lang]["success-rate"]}: <span class="success-rate">${successRate}</span>%</span>
-                                        <span class="text-gray-500">${i18n[lang]["tokens-per-second"]}: <span class="tokens-per-second">${(stats.tokens_per_second || 0).toFixed(1)}</span></span>
-                                    </div>
-                                </div>
+                            <div class="flex items-center space-x-2">
+                                <button onclick="deleteModelStats('${modelInfo.name}')" class="p-1.5 text-gray-400 hover:text-red-600 rounded-full hover:bg-red-50" title="${i18n[lang]['delete-stats']}">
+                                    <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" viewBox="0 0 20 20" fill="currentColor">
+                                        <path fill-rule="evenodd" d="M9 2a1 1 0 00-.894.553L7.382 4H4a1 1 0 000 2v10a2 2 0 002 2h8a2 2 0 002-2V6a1 1 0 100-2h-3.382l-.724-1.447A1 1 0 0011 2H9zM7 8a1 1 0 012 0v6a1 1 0 11-2 0V8zm5-1a1 1 0 00-1 1v6a1 1 0 102 0V8a1 1 0 00-1-1z" clip-rule="evenodd" />
+                                    </svg>
+                                </button>
                                 <div class="status-container">
                                     <span class="status-indicator px-2 py-1 rounded text-sm ${modelInfo.is_available ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800'}">
                                         ${modelInfo.is_available ? i18n[lang]["model-online"] : i18n[lang]["model-offline"]}
@@ -317,16 +321,49 @@
                                 </div>
                             </div>
                         </div>
+                        <div class="mt-2">
+                            <table class="w-full text-sm">
+                                <thead class="text-xs text-gray-500">
+                                    <tr>
+                                        <th class="text-left py-1">${i18n[lang]["total-requests"]}</th>
+                                        <th class="text-left py-1">${i18n[lang]["tokens-inout"]}</th>
+                                        <th class="text-left py-1">${i18n[lang]["average-latency"]}</th>
+                                        <th class="text-left py-1">${i18n[lang]["success-rate"]}</th>
+                                        <th class="text-left py-1">${i18n[lang]["tokens-per-second"]}</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    <tr>
+                                        <td class="py-1">${stats.total_requests || 0}</td>
+                                        <td class="py-1">${stats.total_tokens_in || 0}/${stats.total_tokens_out || 0}</td>
+                                        <td class="py-1">${(stats.average_latency || 0).toFixed(1)}ms</td>
+                                        <td class="py-1">${successRate}%</td>
+                                        <td class="py-1">${(stats.tokens_per_second || 0).toFixed(1)}</td>
+                                    </tr>
+                                </tbody>
+                            </table>
+                        </div>
                         <div class="mt-2 text-xs text-gray-400">
                             <span class="last-updated">${i18n[lang]["last-updated"]}: ${lastUsed ? lastUsed.toLocaleTimeString(lang) : '-'}</span>
                         </div>
                         ${history.timestamp ? `
                         <div class="mt-2 text-xs text-gray-500">
-                            <p>${i18n[lang]["total-requests"]}: ${history.total_requests || 0}</p>
-                            <p>${i18n[lang]["failed-requests"]}: ${history.failed_requests || 0}</p>
-                            <p>${i18n[lang]["tokens-inout"]}: ${history.total_tokens_in || 0}/${history.total_tokens_out || 0}</p>
-                            <p>${i18n[lang]["average-latency"]}: ${(history.average_latency || 0).toFixed(1)}ms</p>
-                            <p>${i18n[lang]["tokens-per-second"]}: ${(history.tokens_per_second || 0).toFixed(1)}</p>
+                            <table class="w-full">
+                                <thead class="text-gray-400">
+                                    <tr>
+                                        <th class="text-left py-1" colspan="5">${i18n[lang]["last-updated"]}: ${new Date(history.timestamp).toLocaleTimeString(lang)}</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    <tr>
+                                        <td class="py-1">${history.total_requests || 0}</td>
+                                        <td class="py-1">${history.total_tokens_in || 0}/${history.total_tokens_out || 0}</td>
+                                        <td class="py-1">${(history.average_latency || 0).toFixed(1)}ms</td>
+                                        <td class="py-1">${((1 - (history.failed_requests || 0) / (history.total_requests || 1)) * 100).toFixed(1)}%</td>
+                                        <td class="py-1">${(history.tokens_per_second || 0).toFixed(1)}</td>
+                                    </tr>
+                                </tbody>
+                            </table>
                         </div>
                         ` : ''}
                     `;
@@ -474,6 +511,43 @@
                 responsePre.className = 'whitespace-pre-wrap text-red-600';
             }
         });
+
+        // 删除模型统计数据
+        async function deleteModelStats(modelName) {
+            const lang = document.documentElement.lang;
+            if (!confirm(i18n[lang]["confirm-delete"])) {
+                return;
+            }
+
+            try {
+                const response = await fetch(`/api/models/${encodeURIComponent(modelName)}/stats`, {
+                    method: 'DELETE'
+                });
+
+                if (!response.ok) {
+                    const errorData = await response.json();
+                    throw new Error(errorData.error || 'Failed to delete statistics');
+                }
+
+                // 显示成功消息
+                const modelDiv = document.getElementById(`model-${modelName}`);
+                const successDiv = document.createElement('div');
+                successDiv.className = 'p-2 mb-2 bg-green-100 text-green-700 rounded text-sm';
+                successDiv.textContent = i18n[lang]["delete-success"];
+                modelDiv.insertBefore(successDiv, modelDiv.firstChild);
+
+                // 3秒后移除成功消息
+                setTimeout(() => {
+                    successDiv.remove();
+                }, 3000);
+
+                // 重新加载模型列表
+                fetchModels(true);
+            } catch (error) {
+                console.error('Failed to delete model statistics:', error);
+                alert(i18n[lang]["delete-error"] + ': ' + error.message);
+            }
+        }
 
         // Initialize
         document.addEventListener('DOMContentLoaded', () => {

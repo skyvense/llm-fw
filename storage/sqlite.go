@@ -225,8 +225,29 @@ func (s *SQLiteStorage) ListModelStats() (map[string]*types.ModelStats, error) {
 
 // DeleteModelStats deletes model statistics
 func (s *SQLiteStorage) DeleteModelStats(model string) error {
-	_, err := s.db.Exec("DELETE FROM model_stats WHERE model = ?", model)
-	return err
+	// 开始事务
+	tx, err := s.db.Begin()
+	if err != nil {
+		return fmt.Errorf("failed to begin transaction: %v", err)
+	}
+	defer tx.Rollback()
+
+	// 删除模型的历史统计数据
+	if _, err := tx.Exec("DELETE FROM model_stats_history WHERE model = ?", model); err != nil {
+		return fmt.Errorf("failed to delete model stats history: %v", err)
+	}
+
+	// 删除模型的当前统计数据
+	if _, err := tx.Exec("DELETE FROM model_stats WHERE model = ?", model); err != nil {
+		return fmt.Errorf("failed to delete current model stats: %v", err)
+	}
+
+	// 提交事务
+	if err := tx.Commit(); err != nil {
+		return fmt.Errorf("failed to commit transaction: %v", err)
+	}
+
+	return nil
 }
 
 // SaveModelStatsHistory saves model statistics history

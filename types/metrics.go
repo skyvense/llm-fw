@@ -1,10 +1,20 @@
 package types
 
-// NoopMetricsCollector 是一个空的指标收集器实现
+// MetricsCollector defines the interface for collecting model metrics
+type MetricsCollector interface {
+	// 记录请求统计信息
+	RecordRequest(req *Request)
+	// 获取所有模型的统计信息
+	GetAllModelStats() map[string]*ModelStats
+	// 删除指定模型的统计信息
+	DeleteModelStats(modelName string)
+}
+
+// NoopMetricsCollector implements MetricsCollector with no-op operations
 type NoopMetricsCollector struct{}
 
 // RecordRequest 实现了 MetricsCollector 接口
-func (c *NoopMetricsCollector) RecordRequest(model string, server string, tokensIn int64, tokensOut int64, latencyMs int64, success bool) {
+func (c *NoopMetricsCollector) RecordRequest(req *Request) {
 	// 什么都不做
 }
 
@@ -29,4 +39,9 @@ func (c *NoopMetricsCollector) CleanupSystemStats() {
 // GetAllModelStats 实现了 MetricsCollector 接口
 func (c *NoopMetricsCollector) GetAllModelStats() map[string]*ModelStats {
 	return make(map[string]*ModelStats)
+}
+
+// DeleteModelStats 实现了 MetricsCollector 接口
+func (c *NoopMetricsCollector) DeleteModelStats(modelName string) {
+	// 什么都不做
 }

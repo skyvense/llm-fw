@@ -50,6 +50,9 @@ type Storage interface {
 
 	// ListRequests 获取请求列表
 	ListRequests(limit int) ([]*Request, error)
+
+	// DeleteModelStats 删除模型统计信息
+	DeleteModelStats(model string) error
 }
 
 // HistoryManager 定义了历史记录管理器的接口

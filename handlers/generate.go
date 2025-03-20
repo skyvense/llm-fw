@@ -55,11 +55,11 @@ type Usage struct {
 type GenerateHandler struct {
 	TargetURL        string
 	Storage          types.Storage
-	MetricsCollector MetricsCollector
+	MetricsCollector types.MetricsCollector
 }
 
 // NewGenerateHandler 创建一个新的生成处理器
-func NewGenerateHandler(targetURL string, storage types.Storage, metricsCollector MetricsCollector) *GenerateHandler {
+func NewGenerateHandler(targetURL string, storage types.Storage, metricsCollector types.MetricsCollector) *GenerateHandler {
 	return &GenerateHandler{
 		TargetURL:        targetURL,
 		Storage:          storage,
@@ -179,14 +179,15 @@ func (h *GenerateHandler) Generate(c *gin.Context) {
 	latency := time.Since(startTime).Milliseconds()
 
 	// 更新指标
-	h.MetricsCollector.RecordRequest(
-		req.Model,
-		"ollama",
-		int64(promptEvalCount),
-		int64(evalCount),
-		latency,
-		true,
-	)
+	h.MetricsCollector.RecordRequest(&types.Request{
+		Model:     req.Model,
+		Server:    "ollama",
+		TokensIn:  int(promptEvalCount),
+		TokensOut: int(evalCount),
+		LatencyMs: float64(latency),
+		Status:    0,
+		Timestamp: time.Now(),
+	})
 
 	// 保存到存储
 	storageReq := &types.Request{

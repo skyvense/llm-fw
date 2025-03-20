@@ -13,6 +13,7 @@ type ModelStatsStorage interface {
 	SaveModelStats(model string, stats *types.ModelStats) error
 	GetModelStats(model string) (*types.ModelStats, error)
 	GetAllModelStats() (map[string]*types.ModelStats, error)
+	DeleteModelStats(model string) error
 }
 
 // Metrics 管理所有指标
@@ -48,11 +49,11 @@ func NewMetrics(storage ModelStatsStorage) *Metrics {
 }
 
 // RecordRequest 记录一个请求的统计信息
-func (m *Metrics) RecordRequest(model, server string, tokensIn, tokensOut int64, latency int64, isSuccess bool) {
+func (m *Metrics) RecordRequest(req *types.Request) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 
-	stats, exists := m.ModelStats[model]
+	stats, exists := m.ModelStats[req.Model]
 	if !exists {
 		stats = &types.ModelStats{
 			TotalRequests:  0,
@@ -62,36 +63,36 @@ func (m *Metrics) RecordRequest(model, server string, tokensIn, tokensOut int64,
 			FailedRequests: 0,
 			LastUsed:       time.Now(),
 		}
-		m.ModelStats[model] = stats
+		m.ModelStats[req.Model] = stats
 	}
 
 	stats.TotalRequests++
-	stats.TotalTokensIn += tokensIn
-	stats.TotalTokensOut += tokensOut
+	stats.TotalTokensIn += int64(req.TokensIn)
+	stats.TotalTokensOut += int64(req.TokensOut)
 	stats.LastUsed = time.Now()
 
 	// 更新平均延迟
 	if stats.TotalRequests == 1 {
-		stats.AverageLatency = float64(latency)
+		stats.AverageLatency = req.LatencyMs
 	} else {
-		stats.AverageLatency = (stats.AverageLatency*float64(stats.TotalRequests-1) + float64(latency)) / float64(stats.TotalRequests)
+		stats.AverageLatency = (stats.AverageLatency*float64(stats.TotalRequests-1) + req.LatencyMs) / float64(stats.TotalRequests)
 	}
 
-	if !isSuccess {
+	if req.Status != 0 { // 0 表示成功
 		stats.FailedRequests++
 	}
 
 	// 更新总体统计信息
 	m.totalRequests++
-	m.totalTokensIn += tokensIn
-	m.totalTokensOut += tokensOut
-	if !isSuccess {
+	m.totalTokensIn += int64(req.TokensIn)
+	m.totalTokensOut += int64(req.TokensOut)
+	if req.Status != 0 {
 		m.failedRequests++
 	}
 
 	// 保存统计信息到存储
 	if m.storage != nil {
-		if err := m.storage.SaveModelStats(model, stats); err != nil {
+		if err := m.storage.SaveModelStats(req.Model, stats); err != nil {
 			log.Printf("Failed to save model stats: %v", err)
 		}
 	}
@@ -156,4 +157,20 @@ func (m *Metrics) CleanupSystemStats() {
 	m.failedRequests = 0
 	m.serverHealth = make(map[string]bool)
 	m.ModelStats = make(map[string]*types.ModelStats)
+}
+
+// DeleteModelStats 删除指定模型的统计数据
+func (m *Metrics) DeleteModelStats(modelName string) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+
+	// 从内存中删除统计数据
+	delete(m.ModelStats, modelName)
+
+	// 如果有存储接口，也从存储中删除
+	if m.storage != nil {
+		if err := m.storage.DeleteModelStats(modelName); err != nil {
+			log.Printf("Failed to delete model stats from storage: %v", err)
+		}
+	}
 }

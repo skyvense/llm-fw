@@ -20,7 +20,7 @@ func SetupRouter(ollamaURL string, storage types.Storage, metricsCollector types
 
 	// 创建模型处理器
 	log.Printf("Initializing model handler...")
-	modelHandler := handlers.NewModelHandler(ollamaURL, storage, metricsCollector)
+	modelHandler := handlers.NewModelHandler(ollamaURL, storage, metricsCollector, storage)
 	log.Printf("Model handler initialized successfully")
 
 	// 创建生成处理器
@@ -43,6 +43,7 @@ func SetupRouter(ollamaURL string, storage types.Storage, metricsCollector types
 		api.GET("/history", historyHandler.GetHistory)
 		api.GET("/history/search", historyHandler.SearchHistory)
 		api.GET("/tags", gin.WrapF(modelHandler.GetTags)) // 使用本地缓存的模型列表提供 Ollama 兼容的接口
+		api.DELETE("/models/:name/stats", modelHandler.DeleteModelStats)
 	}
 
 	// 静态文件

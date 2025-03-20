@@ -12,6 +12,8 @@ import (
 	"time"
 
 	"llm-fw/types"
+
+	"github.com/gin-gonic/gin"
 )
 
 // ModelInfo represents the model information with stats
@@ -48,6 +50,11 @@ type OllamaResponse struct {
 	Models []OllamaModel `json:"models"`
 }
 
+// ModelStatsDB defines the interface for model statistics persistence
+type ModelStatsDB interface {
+	DeleteModelStats(modelName string) error
+}
+
 // ModelHandler handles model-related requests
 type ModelHandler struct {
 	ollamaURL        string
@@ -55,15 +62,17 @@ type ModelHandler struct {
 	metricsCollector types.MetricsCollector
 	models           map[string]*types.ModelInfo
 	mu               sync.RWMutex
+	db               ModelStatsDB
 }
 
 // NewModelHandler creates a new model handler
-func NewModelHandler(ollamaURL string, storage types.Storage, metricsCollector types.MetricsCollector) *ModelHandler {
+func NewModelHandler(ollamaURL string, storage types.Storage, metricsCollector types.MetricsCollector, db ModelStatsDB) *ModelHandler {
 	h := &ModelHandler{
 		ollamaURL:        ollamaURL,
 		storage:          storage,
 		metricsCollector: metricsCollector,
 		models:           make(map[string]*types.ModelInfo),
+		db:               db,
 	}
 
 	// 初始化时获取模型列表
@@ -332,4 +341,36 @@ func (h *ModelHandler) GetTags(w http.ResponseWriter, r *http.Request) {
 	json.NewEncoder(w).Encode(OllamaResponse{
 		Models: ollamaModels,
 	})
+}
+
+// DeleteModelStats 删除指定模型的统计数据
+func (h *ModelHandler) DeleteModelStats(c *gin.Context) {
+	modelName := c.Param("name")
+	if modelName == "" {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Model name is required"})
+		return
+	}
+
+	// 从数据库中删除统计数据
+	if err := h.storage.DeleteModelStats(modelName); err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": fmt.Sprintf("Failed to delete model statistics: %v", err)})
+		return
+	}
+
+	// 从 metrics collector 中删除统计数据
+	h.metricsCollector.DeleteModelStats(modelName)
+
+	// 从内存缓存中删除统计数据
+	h.mu.Lock()
+	if model, exists := h.models[modelName]; exists {
+		// 创建一个新的空统计数据
+		model.Stats = &types.ModelStats{
+			LastUsed: time.Now(),
+		}
+		model.History = nil
+		h.models[modelName] = model
+	}
+	h.mu.Unlock()
+
+	c.JSON(http.StatusOK, gin.H{"message": "Statistics deleted successfully"})
 }
