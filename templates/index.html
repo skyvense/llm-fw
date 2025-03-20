@@ -103,8 +103,10 @@
                 "total-requests": "Total Requests",
                 "tokens-in": "Tokens In",
                 "tokens-out": "Tokens Out",
+                "tokens-inout": "Tokens In/Out",
                 "average-latency": "Average Latency",
                 "success-rate": "Success Rate",
+                "tokens-per-second": "Tokens/Second",
                 "last-updated": "Last Updated",
                 "failed-requests": "Failed Requests",
                 "request-history": "Request History",
@@ -131,8 +133,10 @@
                 "total-requests": "总请求数",
                 "tokens-in": "输入Token数",
                 "tokens-out": "输出Token数",
+                "tokens-inout": "Token数 输入/输出",
                 "average-latency": "平均延迟",
                 "success-rate": "成功率",
+                "tokens-per-second": "每秒Token数",
                 "last-updated": "最后更新",
                 "failed-requests": "失败请求数",
                 "request-history": "请求历史",
@@ -197,8 +201,7 @@
                         <p class="text-sm text-gray-500">${timestamp}</p>
                     </div>
                     <div class="text-sm text-gray-500 text-right">
-                        <p>${i18n[lang]["tokens-in"]}: ${request.tokens_in}</p>
-                        <p>${i18n[lang]["tokens-out"]}: ${request.tokens_out}</p>
+                        <p>${i18n[lang]["tokens-inout"]}: ${request.tokens_in}/${request.tokens_out}</p>
                         <p>${i18n[lang]["latency"]}: ${request.latency_ms || 0}ms</p>
                     </div>
                 </div>
@@ -301,10 +304,10 @@
                                 <div class="stats-container">
                                     <div class="flex items-center space-x-4">
                                         <span class="text-gray-500">${i18n[lang]["total-requests"]}: <span class="total-requests">${stats.total_requests || 0}</span></span>
-                                        <span class="text-gray-500">${i18n[lang]["tokens-in"]}: <span class="tokens-in">${stats.total_tokens_in || 0}</span></span>
-                                        <span class="text-gray-500">${i18n[lang]["tokens-out"]}: <span class="tokens-out">${stats.total_tokens_out || 0}</span></span>
+                                        <span class="text-gray-500">${i18n[lang]["tokens-inout"]}: <span class="tokens-inout">${stats.total_tokens_in || 0}/${stats.total_tokens_out || 0}</span></span>
                                         <span class="text-gray-500">${i18n[lang]["average-latency"]}: <span class="average-latency">${(stats.average_latency || 0).toFixed(1)}</span>ms</span>
                                         <span class="text-gray-500">${i18n[lang]["success-rate"]}: <span class="success-rate">${successRate}</span>%</span>
+                                        <span class="text-gray-500">${i18n[lang]["tokens-per-second"]}: <span class="tokens-per-second">${(stats.tokens_per_second || 0).toFixed(1)}</span></span>
                                     </div>
                                 </div>
                                 <div class="status-container">
@@ -321,9 +324,9 @@
                         <div class="mt-2 text-xs text-gray-500">
                             <p>${i18n[lang]["total-requests"]}: ${history.total_requests || 0}</p>
                             <p>${i18n[lang]["failed-requests"]}: ${history.failed_requests || 0}</p>
-                            <p>${i18n[lang]["tokens-in"]}: ${history.total_tokens_in || 0}</p>
-                            <p>${i18n[lang]["tokens-out"]}: ${history.total_tokens_out || 0}</p>
+                            <p>${i18n[lang]["tokens-inout"]}: ${history.total_tokens_in || 0}/${history.total_tokens_out || 0}</p>
                             <p>${i18n[lang]["average-latency"]}: ${(history.average_latency || 0).toFixed(1)}ms</p>
+                            <p>${i18n[lang]["tokens-per-second"]}: ${(history.tokens_per_second || 0).toFixed(1)}</p>
                         </div>
                         ` : ''}
                     `;

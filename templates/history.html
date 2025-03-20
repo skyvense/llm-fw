@@ -92,6 +92,7 @@
                 "response": "Response",
                 "tokens-in": "Tokens In",
                 "tokens-out": "Tokens Out",
+                "tokens-inout": "Tokens In/Out",
                 "latency": "Latency",
                 "error": "Error"
             },
@@ -113,6 +114,7 @@
                 "response": "回复",
                 "tokens-in": "输入Token数",
                 "tokens-out": "输出Token数",
+                "tokens-inout": "Token数 输入/输出",
                 "latency": "延迟",
                 "error": "错误"
             }
@@ -234,8 +236,7 @@
                                 <p class="text-sm text-gray-500">${timestamp}</p>
                             </div>
                             <div class="text-sm text-gray-500 text-right">
-                                <p>${i18n[lang]["tokens-in"]}: ${request.tokens_in}</p>
-                                <p>${i18n[lang]["tokens-out"]}: ${request.tokens_out}</p>
+                                <p>${i18n[lang]["tokens-inout"]}: ${request.tokens_in}/${request.tokens_out}</p>
                                 <p>${i18n[lang]["latency"]}: ${request.latency_ms || 0}ms</p>
                             </div>
                         </div>

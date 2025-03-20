@@ -158,6 +158,10 @@ func (h *ModelHandler) ListModels(w http.ResponseWriter, r *http.Request) {
 	// 创建模型名称到历史数据的映射
 	historyMap := make(map[string]*types.ModelStatsHistory)
 	for _, entry := range history {
+		// 计算历史记录的 tokens/second
+		if entry.AverageLatency > 0 {
+			entry.TokensPerSecond = float64(entry.TotalTokensOut) / (float64(entry.TotalRequests) * entry.AverageLatency / 1000)
+		}
 		historyMap[entry.Model] = entry
 	}
 
@@ -185,6 +189,12 @@ func (h *ModelHandler) ListModels(w http.ResponseWriter, r *http.Request) {
 				IsAvailable: false,
 			}
 		}
+
+		// 计算 tokens/second
+		if stats.AverageLatency > 0 {
+			stats.TokensPerSecond = float64(stats.TotalTokensOut) / (float64(stats.TotalRequests) * stats.AverageLatency / 1000)
+		}
+
 		modelInfo.Stats = stats
 		modelInfo.LastUsed = &stats.LastUsed
 		modelInfo.History = historyMap[modelName]

@@ -4,12 +4,13 @@ import "time"
 
 // ModelStats 存储模型的统计信息
 type ModelStats struct {
-	TotalRequests  int64     `json:"total_requests"`
-	TotalTokensIn  int64     `json:"total_tokens_in"`
-	TotalTokensOut int64     `json:"total_tokens_out"`
-	AverageLatency float64   `json:"average_latency"`
-	FailedRequests int64     `json:"failed_requests"`
-	LastUsed       time.Time `json:"last_used"`
+	TotalRequests   int64     `json:"total_requests"`
+	TotalTokensIn   int64     `json:"total_tokens_in"`
+	TotalTokensOut  int64     `json:"total_tokens_out"`
+	AverageLatency  float64   `json:"average_latency"`
+	TokensPerSecond float64   `json:"tokens_per_second"` // 每秒生成的token数量
+	FailedRequests  int64     `json:"failed_requests"`
+	LastUsed        time.Time `json:"last_used"`
 }
 
 // ModelInfo 表示模型的完整信息
@@ -58,12 +59,13 @@ type Request struct {
 
 // ModelStatsHistory 表示模型统计历史记录
 type ModelStatsHistory struct {
-	ID             string    `json:"id"`
-	Model          string    `json:"model"`
-	TotalRequests  int64     `json:"total_requests"`
-	FailedRequests int64     `json:"failed_requests"`
-	TotalTokensIn  int64     `json:"total_tokens_in"`
-	TotalTokensOut int64     `json:"total_tokens_out"`
-	AverageLatency float64   `json:"average_latency"`
-	Timestamp      time.Time `json:"timestamp"`
+	ID              string    `json:"id"`
+	Model           string    `json:"model"`
+	TotalRequests   int64     `json:"total_requests"`
+	FailedRequests  int64     `json:"failed_requests"`
+	TotalTokensIn   int64     `json:"total_tokens_in"`
+	TotalTokensOut  int64     `json:"total_tokens_out"`
+	AverageLatency  float64   `json:"average_latency"`
+	TokensPerSecond float64   `json:"tokens_per_second"` // 每秒生成的token数量
+	Timestamp       time.Time `json:"timestamp"`
 }
