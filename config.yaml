@@ -8,3 +8,11 @@ ollama:
 storage:
   type: "sqlite"
   path: "data/llm-fw.db"
+
+openrouter:
+  api_key: "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"  # 替换为您的 OpenRouter API key
+  base_url: "https://openrouter.ai/api"
+  models:
+    openrouter_deepseek1.5b: "deepseek-ai/deepseek-coder-1.5b-base"
+    openrouter_mistral7b: "mistralai/mistral-7b-instruct"
+    openrouter_deepseek_chat: "deepseek/deepseek-chat:free"
